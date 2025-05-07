@@ -14,6 +14,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Database } from "@/integrations/supabase/types";
 import { Switch } from "@/components/ui/switch";
 import { uploadStoreLogo, uploadStoreBanner } from "@/utils/storage";
+import getEnvironmentConfig, { isLocalhost, generateStoreUrl } from "../config/environment";
 
 type StoreSettings = Database['public']['Tables']['store_settings']['Row'];
 type StoreSettingsInsert = Database['public']['Tables']['store_settings']['Insert'];
@@ -429,95 +430,33 @@ const StoreCustomizer = () => {
   };
 
   const handlePublishStore = async () => {
-    if (!user) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "You must be logged in to publish your store",
-      });
-      return;
-    }
-    
     setPublishing(true);
     
     try {
-      // Check if store name is provided
-      if (!storeInfo.name || storeInfo.name.trim() === '') {
-        toast({
-          variant: "destructive",
-          title: "Store name required",
-          description: "Please provide a name for your store before publishing",
-        });
-        setPublishing(false);
-        return;
-      }
-      
-      // First, save all current settings
-      await handleSaveSettings();
-      
-      // Generate a store slug for routing (based on store name)
+      // Generate a store slug from the name
       const storeSlug = storeInfo.name.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
       
-      // Make sure the store slug is valid
       if (!storeSlug) {
-        toast({
-          variant: "destructive",
-          title: "Invalid store name",
-          description: "Please provide a valid store name that can be used as part of a URL",
-        });
-        setPublishing(false);
-        return;
+        throw new Error("Please provide a valid store name");
       }
       
-      // Verify if a domain with this slug already exists (for a different user)
-      const { data: existingStore, error: slugCheckError } = await supabase
-        .from('store_settings')
-        .select('user_id')
-        .eq('store_slug', storeSlug)
-        .neq('user_id', user.id);
-        
-      if (slugCheckError) throw slugCheckError;
-      
-      if (existingStore && existingStore.length > 0) {
-        toast({
-          variant: "destructive",
-          title: "Store name already taken",
-          description: "Please choose a different store name before publishing",
-        });
-        setPublishing(false);
-        return;
-      }
-      
-      // Update only the publish status in the database
+      // Update the store_settings table to mark as published
       const { error } = await supabase
         .from('store_settings')
         .update({
           is_published: true,
-          updated_at: new Date().toISOString(),
+          slug: storeSlug
         })
-        .eq('user_id', user.id);
-        
+        .eq('user_id', user?.id);
+      
       if (error) throw error;
       
       // Update local state
       setIsPublished(true);
       
-      // Get hostname for links
-      const hostname = window.location.hostname;
-      const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
-      const localPort = import.meta.env.VITE_LOCAL_DEV_PORT || '8080';
-      const productionDomain = import.meta.env.VITE_PRODUCTION_DOMAIN || hostname.split('.').slice(1).join('.');
-      
-      let storeUrl;
-      let subdomainUrl;
-      
-      if (isLocalhost) {
-        storeUrl = `http://localhost:${localPort}/store/${storeSlug}`;
-        subdomainUrl = `http://localhost:${localPort}?store=${storeSlug}`;
-      } else {
-        storeUrl = `https://${hostname}/store/${storeSlug}`;
-        subdomainUrl = `https://${storeSlug}.${productionDomain}`;
-      }
+      // Generate URLs using the helper function
+      const primaryStoreUrl = generateStoreUrl(storeSlug);
+      const storeUrl = `/store/${storeSlug}`;
       
       // Show message with access info
       toast({
@@ -526,11 +465,11 @@ const StoreCustomizer = () => {
           <div className="mt-2 space-y-2">
             <p>Your store is now live at:</p>
             <p className="font-medium text-sm bg-gray-100 p-2 rounded">
-              {subdomainUrl}
+              {primaryStoreUrl}
             </p>
             <p>Also accessible at:</p>
             <p className="font-medium text-sm bg-gray-100 p-2 rounded">
-              {storeUrl}
+              {window.location.origin}{storeUrl}
             </p>
           </div>
         ),
@@ -553,19 +492,8 @@ const StoreCustomizer = () => {
     // Generate a store slug from the name (same logic as in handleSaveSettings)
     const storeSlug = storeInfo.name.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
     
-    // Add preview=true parameter to bypass published check
-    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    
-    let previewUrl;
-    if (isLocalhost) {
-      // For local development, use localhost with query parameter and port from env variable
-      const localPort = import.meta.env.VITE_LOCAL_DEV_PORT || '8080';
-      previewUrl = `http://localhost:${localPort}?store=${storeSlug}&preview=true`;
-    } else {
-      // For production, use the subdomain with domain from env variable
-      const productionDomain = import.meta.env.VITE_PRODUCTION_DOMAIN || window.location.hostname.split('.').slice(1).join('.');
-      previewUrl = `http://${storeSlug}.${productionDomain}?preview=true`;
-    }
+    // Generate preview URL using the helper function
+    const previewUrl = generateStoreUrl(storeSlug, true);
     
     // Open in a new tab
     window.open(previewUrl, '_blank');
@@ -634,8 +562,19 @@ const StoreCustomizer = () => {
                   <div className="bg-white border rounded p-3 font-mono text-sm">
                     {derivedStoreSlug ? (
                       <>
-                        <span className="text-purple-600">{derivedStoreSlug}</span>
-                        <span className="text-gray-600">.yourdomain.com</span>
+                        {getEnvironmentConfig().useQueryParamRouting ? (
+                          // Show query parameter format for Vercel/localhost
+                          <>
+                            <span className="text-gray-600">{window.location.origin}?store=</span>
+                            <span className="text-purple-600">{derivedStoreSlug}</span>
+                          </>
+                        ) : (
+                          // Show subdomain format for custom domains
+                          <>
+                            <span className="text-purple-600">{derivedStoreSlug}</span>
+                            <span className="text-gray-600">.yourdomain.com</span>
+                          </>
+                        )}
                       </>
                     ) : (
                       <span className="text-gray-400 italic">Enter a store name to generate URL</span>

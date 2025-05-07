@@ -42,24 +42,20 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
 // Detect if we're on a custom subdomain
 const isCustomSubdomain = () => {
-  const { enableSubdomainRouting, isDevelopment, isVercelPreview, hostname } = getEnvironmentConfig();
+  const { enableSubdomainRouting, useQueryParamRouting } = getEnvironmentConfig();
   
   // If subdomain routing is disabled via config, return false immediately
   if (!enableSubdomainRouting) {
     return false;
   }
   
-  // For localhost/development, check if there's a store query parameter
-  if (isLocalhost() || isDevelopment) {
+  // In environments that use query params (Vercel, localhost), check URL params
+  if (useQueryParamRouting) {
     return new URLSearchParams(window.location.search).has('store');
   }
   
-  // Skip subdomain routing for Vercel preview domains
-  if (isVercelPreview) {
-    return false;
-  }
-  
   // For production domains with custom domain, check if we're on a subdomain
+  const hostname = window.location.hostname;
   const parts = hostname.split('.');
   
   // Proper subdomain check (e.g., store.yourdomain.com)
