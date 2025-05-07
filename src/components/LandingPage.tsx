@@ -1,4 +1,3 @@
-
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Link } from "react-router-dom";
@@ -17,8 +16,448 @@ import {
   ShieldCheck, 
   Users 
 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import Typed from "typed.js";
+
+// TypeScript interfaces
+interface UserStory {
+  identity: string;
+  descriptor: string;
+  problem: string;
+  cta: string;
+}
+
+interface CategoryPhrases {
+  descriptors: string[];
+  problems: string[];
+  ctas: string[];
+}
+
+interface UserStoryMatrix {
+  [key: string]: CategoryPhrases;
+}
 
 const LandingPage = () => {
+  // Reference for Typed.js
+  const typedRef = useRef<HTMLSpanElement>(null);
+  const identityRef = useRef<HTMLSpanElement>(null);
+  const descriptionRef = useRef<HTMLSpanElement>(null);
+  const ctaRef = useRef<HTMLSpanElement>(null);
+  
+  // Current index to keep all typed instances in sync
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  // Complete user story matrix with all phrases from the table
+  const userStoryMatrix: UserStoryMatrix = {
+    "I am a": {
+      descriptors: [
+        "jua kali artisan",
+        "driver",
+        "mechanic",
+        "baker",
+        "carpenter",
+        "caterer"
+      ],
+      problems: [
+        "and I want to track payments better.",
+        "and I want to reach more customers.",
+        "and I want to accept mobile orders easily."
+      ],
+      ctas: [
+        "Start Tracking Payments",
+        "Get More Customers",
+        "Accept Mobile Payments"
+      ]
+    },
+    "I run": {
+      descriptors: [
+        "a juice bar",
+        "my own fashion brand",
+        "a small bakery",
+        "a tailoring shop"
+      ],
+      problems: [
+        "and I want to manage sales effectively.",
+        "and I want to offer delivery to my customers.",
+        "and I want to grow my customer base online."
+      ],
+      ctas: [
+        "Manage Sales Effectively",
+        "Start Offering Delivery",
+        "Grow Your Online Presence"
+      ]
+    },
+    "I own": {
+      descriptors: [
+        "a mini mart",
+        "liquor stores on Mirema Drive",
+        "a salon",
+        "a barbershop"
+      ],
+      problems: [
+        "and I want to track inventory accurately.",
+        "and I want to accept online payments securely.",
+        "and I want to grow repeat business."
+      ],
+      ctas: [
+        "Track Your Inventory",
+        "Accept Online Payments",
+        "Grow Repeat Business"
+      ]
+    },
+    "I sell": {
+      descriptors: [
+        "groceries",
+        "handmade jewelry",
+        "second-hand clothes",
+        "perfumes"
+      ],
+      problems: [
+        "and I want to get discovered online.",
+        "and I want to fulfill orders without needing a developer.",
+        "and I want to streamline my order processing."
+      ],
+      ctas: [
+        "Get Discovered Online",
+        "Build Without Coding",
+        "Streamline Orders"
+      ]
+    },
+    "I manage": {
+      descriptors: [
+        "three shops",
+        "a delivery team",
+        "100+ SKUs",
+        "my siblings' business too"
+      ],
+      problems: [
+        "and I need a simpler way to track everything from one place.",
+        "and I need to centralize my operations.",
+        "and I need better visibility across my business."
+      ],
+      ctas: [
+        "Centralize Your Business",
+        "Get Complete Visibility",
+        "Simplify Management"
+      ]
+    },
+    "I want to": {
+      descriptors: [
+        "start a side hustle",
+        "digitize my shop",
+        "sell online",
+        "grow my hustle"
+      ],
+      problems: [
+        "but I don't know how to build a website.",
+        "but I don't know how to handle all the backend stuff.",
+        "but I don't have technical expertise."
+      ],
+      ctas: [
+        "Start Your Side Hustle",
+        "Digitize Your Business",
+        "Launch Your Online Store"
+      ]
+    },
+    "I'm part of": {
+      descriptors: [
+        "a chama",
+        "a family business",
+        "a youth group selling farm produce"
+      ],
+      problems: [
+        "and we need a system that manages money transparently.",
+        "and we need to track orders and deliveries efficiently.",
+        "and we need to build trust with our customers."
+      ],
+      ctas: [
+        "Manage Group Finances",
+        "Track Group Orders",
+        "Build Customer Trust"
+      ]
+    },
+    "We run": {
+      descriptors: [
+        "a food delivery service",
+        "a local brand",
+        "a collective marketplace"
+      ],
+      problems: [
+        "and we want customers to browse our catalog easily.",
+        "and we want to simplify ordering and payments.",
+        "and we want to grow without technical complexity."
+      ],
+      ctas: [
+        "Simplify Your Operations",
+        "Create A Digital Catalog",
+        "Grow Your Marketplace"
+      ]
+    },
+    "I operate": {
+      descriptors: [
+        "a food truck",
+        "a pop-up market stand",
+        "a mobile salon"
+      ],
+      problems: [
+        "and I need a simple way to take orders from my phone.",
+        "and I need to track my inventory on the go.",
+        "and I need to manage my business while mobile."
+      ],
+      ctas: [
+        "Take Orders On The Go",
+        "Track Mobile Inventory",
+        "Manage From Anywhere"
+      ]
+    },
+    "I create": {
+      descriptors: [
+        "handmade crafts",
+        "African prints",
+        "bridal accessories"
+      ],
+      problems: [
+        "and I want to showcase my work professionally.",
+        "and I want to take custom orders without complexity.",
+        "and I want to build my brand online."
+      ],
+      ctas: [
+        "Showcase Your Creations",
+        "Take Custom Orders",
+        "Build Your Brand"
+      ]
+    },
+    "I support": {
+      descriptors: [
+        "other women-led businesses",
+        "farmers in my village"
+      ],
+      problems: [
+        "and I want to create a platform where they can list their products.",
+        "and I want to help them sell online without barriers.",
+        "and I want to connect them with more customers."
+      ],
+      ctas: [
+        "Build A Community Platform",
+        "Enable Easier Selling",
+        "Connect With Customers"
+      ]
+    }
+  };
+
+  // Function to generate random user stories from the matrix
+  const generateRandomUserStories = (): UserStory[] => {
+    const stories: UserStory[] = [];
+    
+    // Get all primary phrases (identity)
+    const primaryPhrases = Object.keys(userStoryMatrix);
+    
+    // Generate stories for each primary phrase
+    primaryPhrases.forEach(primary => {
+      const descriptors = userStoryMatrix[primary].descriptors;
+      const problems = userStoryMatrix[primary].problems;
+      const ctas = userStoryMatrix[primary].ctas;
+      
+      // For each descriptor, pick a random problem and CTA
+      descriptors.forEach(descriptor => {
+        const randomProblemIndex = Math.floor(Math.random() * problems.length);
+        const randomCtaIndex = Math.floor(Math.random() * ctas.length);
+        
+        stories.push({
+          identity: primary,
+          descriptor: descriptor,
+          problem: problems[randomProblemIndex],
+          cta: ctas[randomCtaIndex]
+        });
+      });
+    });
+    
+    // Shuffle the array to randomize the order
+    const shuffledStories = shuffleArray(stories);
+    
+    // Limit to a reasonable number of stories for the carousel (e.g., 15)
+    // This prevents the animation from running too long before repeating
+    return shuffledStories.slice(0, 15);
+  };
+  
+  // Fisher-Yates shuffle algorithm
+  const shuffleArray = (array: UserStory[]): UserStory[] => {
+    const newArray = [...array];
+    for (let i = newArray.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+    }
+    return newArray;
+  };
+  
+  // Generate randomized user stories
+  // We'll treat this as our pool of stories for this session
+  const userStories = generateRandomUserStories();
+
+  // Log the selected stories for debugging (can be removed in production)
+  useEffect(() => {
+    console.log("Selected user stories for this session:", userStories);
+    
+    // You could add an API endpoint to record which stories resonate most with users
+    // by tracking which ones they click on or interact with
+  }, []);
+
+  useEffect(() => {
+    // Extract all phrases into separate arrays for Typed.js
+    const identities = userStories.map(story => story.identity);
+    const descriptors = userStories.map(story => story.descriptor);
+    const problems = userStories.map(story => story.problem);
+    const ctas = userStories.map(story => story.cta);
+
+    // Duration for each complete cycle in ms
+    const cycleDuration = 8000; 
+    
+    // Track which instance is currently typing
+    let descriptorInstance: Typed | null = null;
+    let problemInstance: Typed | null = null;
+    let ctaInstance: Typed | null = null;
+    
+    // Only create animation if we have DOM elements to attach to
+    if (!identityRef.current || !typedRef.current || 
+        !descriptionRef.current || !ctaRef.current) {
+      return;
+    }
+    
+    // Initialize secondary typed instances first
+    // Secondary descriptor typed instance
+    const descriptorTyped = new Typed(typedRef.current, {
+      strings: [descriptors[0]],
+      typeSpeed: 60, 
+      backSpeed: 20,
+      loop: false,
+      smartBackspace: false,
+      showCursor: true,
+      cursorChar: '|', 
+    });
+    descriptorInstance = descriptorTyped;
+
+    // Problem typed instance
+    const problemTyped = new Typed(descriptionRef.current, {
+      strings: [problems[0]],
+      typeSpeed: 30, 
+      backSpeed: 20,
+      loop: false,
+      smartBackspace: false,
+      showCursor: false, 
+    });
+    problemInstance = problemTyped;
+
+    // CTA typed instance
+    const ctaTyped = new Typed(ctaRef.current, {
+      strings: [ctas[0]],
+      typeSpeed: 50, 
+      backSpeed: 30,
+      loop: false,
+      smartBackspace: false,
+      showCursor: false, 
+    });
+    ctaInstance = ctaTyped;
+    
+    // Identity typed instance - leads the sequence
+    const identityTyped = new Typed(identityRef.current, {
+      strings: identities,
+      typeSpeed: 40, 
+      backSpeed: 20,
+      backDelay: cycleDuration - 2000,
+      startDelay: 500, // Short delay before starting to ensure page has loaded
+      loop: true,
+      smartBackspace: false,
+      showCursor: false,
+      preStringTyped: (arrayPos) => {
+        // Update the current index when a new string is about to be typed
+        setCurrentIndex(arrayPos);
+        
+        // Log the current story being displayed (for debugging)
+        console.log("Now showing:", userStories[arrayPos % userStories.length]);
+        
+        // Add highlight trigger classes
+        if (identityRef.current) {
+          identityRef.current.classList.add('typed-fade-in');
+          identityRef.current.classList.add('typed-trigger-highlight');
+          
+          // Remove the classes after animation completes
+          setTimeout(() => {
+            identityRef.current?.classList.remove('typed-trigger-highlight');
+          }, 2000);
+        }
+        
+        // Manually reset and restart the other instances with the same position
+        setTimeout(() => {
+          if (descriptorInstance) {
+            // @ts-ignore - Access to internal methods
+            descriptorInstance.strings = [descriptors[arrayPos]];
+            descriptorInstance.reset();
+            descriptorInstance.start();
+            
+            // Add highlight effect to descriptor
+            if (typedRef.current) {
+              typedRef.current.classList.add('typed-fade-in');
+              typedRef.current.classList.add('typed-trigger-highlight');
+              
+              // Remove the classes after animation completes
+              setTimeout(() => {
+                typedRef.current?.classList.remove('typed-trigger-highlight');
+              }, 2000);
+            }
+          }
+        }, 200);
+        
+        setTimeout(() => {
+          if (problemInstance) {
+            // @ts-ignore - Access to internal methods
+            problemInstance.strings = [problems[arrayPos]];
+            problemInstance.reset();
+            problemInstance.start();
+            
+            // Add highlight effect to problem description
+            if (descriptionRef.current) {
+              descriptionRef.current.classList.add('typed-fade-in');
+              descriptionRef.current.classList.add('typed-trigger-highlight');
+              
+              // Remove the classes after animation completes
+              setTimeout(() => {
+                descriptionRef.current?.classList.remove('typed-trigger-highlight');
+              }, 2000);
+            }
+          }
+        }, 600);
+        
+        setTimeout(() => {
+          if (ctaInstance) {
+            // @ts-ignore - Access to internal methods
+            ctaInstance.strings = [ctas[arrayPos]];
+            ctaInstance.reset();
+            ctaInstance.start();
+            
+            // Add highlight effect to CTA
+            if (ctaRef.current) {
+              ctaRef.current.classList.add('typed-fade-in');
+              ctaRef.current.classList.add('typed-trigger-highlight');
+              
+              // Remove the classes after animation completes
+              setTimeout(() => {
+                ctaRef.current?.classList.remove('typed-trigger-highlight');
+              }, 2000);
+            }
+          }
+        }, 1200);
+      }
+    });
+
+    // Clean up on unmount
+    return () => {
+      identityTyped.destroy();
+      descriptorTyped.destroy();
+      problemTyped.destroy();
+      ctaTyped.destroy();
+    };
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header with East African inspired pattern */}
@@ -44,38 +483,47 @@ const LandingPage = () => {
         </div>
       </header>
 
-      {/* Hero section with gradient and cultural pattern */}
-      <section className="pattern-bg bg-gradient-to-r from-purple-50 to-orange-50 py-20">
+      {/* Dynamic user-story hero section with animated text carousel */}
+      <section className="pattern-bg bg-gradient-to-r from-purple-50 to-orange-50 py-32">
         <div className="container mx-auto px-4">
           <div className="flex flex-col md:flex-row items-center">
             <div className="md:w-1/2 mb-10 md:mb-0">
-              <div className="inline-block px-4 py-1 rounded-full bg-primary/10 text-primary mb-4">
-                For Small Businesses in East Africa
+              <div className="inline-block px-4 py-1 rounded-full bg-primary/10 text-primary mb-6 hero-subtitle">
+                Your Story, Our Platform
               </div>
-              <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6">
-                Build Your Online Store <span className="text-primary">In Minutes</span>
-              </h1>
-              <p className="text-lg text-gray-700 mb-8">
-                A complete platform for small businesses to create beautiful online stores, 
-                manage inventory, process payments including M-Pesa, and grow their business locally and beyond.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Button size="lg" className="bg-primary hover:bg-primary/90" asChild>
-                  <Link to="/signup">Start Building <ChevronRight className="ml-2 h-5 w-5" /></Link>
+              
+              {/* Dynamic user story matrix */}
+              <div className="mb-8">
+                <div className="flex flex-wrap text-4xl md:text-5xl font-bold text-gray-900 mb-2 hero-title">
+                  <span ref={identityRef} className="mr-2 min-h-[1.5em] inline-block"></span>
+                  <span ref={typedRef} className="text-primary min-h-[1.5em] inline-block"></span>
+                </div>
+                <p className="text-xl text-gray-700 mt-4 mb-8 hero-description">
+                  <span ref={descriptionRef} className="min-h-[4em] block"></span>
+                </p>
+              </div>
+              
+              <div className="flex flex-col sm:flex-row gap-4 hero-buttons">
+                <Button size="lg" className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20" asChild>
+                  <Link to="/signup"><span ref={ctaRef} className="min-h-[1.5em] inline-block"></span> <ChevronRight className="ml-2 h-5 w-5" /></Link>
                 </Button>
                 <Button size="lg" variant="outline" className="border-primary text-primary hover:bg-primary/10" asChild>
                   <Link to="/demo">See Demo</Link>
                 </Button>
               </div>
+              <p className="mt-4 text-gray-500 text-sm hero-note">No credit card required. 14-day free trial.</p>
             </div>
             <div className="md:w-1/2">
               <div className="relative">
-                <div className="absolute -top-6 -left-6 w-full h-full bg-accent/20 rounded-lg"></div>
-                <img 
-                  src="/lovable-uploads/6c799b61-bc0c-414d-abfa-06eb3d07a50e.png" 
-                  alt="Store customization interface" 
-                  className="rounded-lg shadow-xl relative z-10" 
-                />
+                <div className="absolute -top-6 -left-6 w-full h-full bg-accent/20 rounded-lg hero-image-bg"></div>
+                <div className="absolute -bottom-6 -right-6 w-full h-full bg-primary/10 rounded-lg hero-image-bg"></div>
+                <div className="hero-image-shine">
+                  <img 
+                    src="/lovable-uploads/6c799b61-bc0c-414d-abfa-06eb3d07a50e.png" 
+                    alt="BiasharaBuilder store customization interface" 
+                    className="rounded-lg shadow-xl relative z-10 hero-image border border-gray-100" 
+                  />
+                </div>
               </div>
             </div>
           </div>
