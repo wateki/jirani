@@ -23,6 +23,7 @@ import ProductForm from "./components/products/ProductForm";
 import { useAuth } from "@/contexts/AuthContext";
 import DashboardLayout from "./layouts/DashboardLayout";
 import { dashboardRoutes } from "./routes";
+import getEnvironmentConfig, { isLocalhost } from "./config/environment";
 
 const queryClient = new QueryClient();
 const supabase = createClient(
@@ -41,18 +42,35 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
 // Detect if we're on a custom subdomain
 const isCustomSubdomain = () => {
-  const hostname = window.location.hostname;
-  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+  const { enableSubdomainRouting, isDevelopment, isVercelPreview, hostname } = getEnvironmentConfig();
   
-  // For localhost, check if there's a store query parameter
-  if (isLocalhost) {
+  // If subdomain routing is disabled via config, return false immediately
+  if (!enableSubdomainRouting) {
+    return false;
+  }
+  
+  // For localhost/development, check if there's a store query parameter
+  if (isLocalhost() || isDevelopment) {
     return new URLSearchParams(window.location.search).has('store');
   }
   
-  // For production domains, check if we're on a subdomain
+  // Skip subdomain routing for Vercel preview domains
+  if (isVercelPreview) {
+    return false;
+  }
+  
+  // For production domains with custom domain, check if we're on a subdomain
   const parts = hostname.split('.');
-  // If on subdomain (e.g., mystore.example.com)
-  return parts.length >= 3;
+  
+  // Proper subdomain check (e.g., store.yourdomain.com)
+  if (parts.length >= 3) {
+    // Exclude common non-store subdomains
+    const subdomain = parts[0].toLowerCase();
+    const excludedSubdomains = ['www', 'app', 'api', 'admin', 'dev', 'staging', 'test'];
+    return !excludedSubdomains.includes(subdomain);
+  }
+  
+  return false;
 };
 
 const Root = () => {

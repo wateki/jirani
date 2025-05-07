@@ -19,6 +19,12 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  define: {
+    // Define environment-specific variables
+    'import.meta.env.VITE_ENABLE_SUBDOMAIN_ROUTING': mode === 'development' 
+      ? JSON.stringify('true') 
+      : JSON.stringify(process.env.VITE_ENABLE_SUBDOMAIN_ROUTING || 'false')
+  },
   build: {
     minify: 'terser',
     terserOptions: {
