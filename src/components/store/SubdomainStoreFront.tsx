@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import StoreRouter from "./StoreRouter";
-import StoreFront from "./StoreFront";
+/* import StoreFront from "./StoreFront"; */
 import { CartProvider } from "@/contexts/CartContext";
 import type { Database } from "@/integrations/supabase/types";
 

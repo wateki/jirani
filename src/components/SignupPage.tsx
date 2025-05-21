@@ -7,6 +7,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { ShoppingBag, User, Mail, Lock, Check } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { log } from "console";
 
 const SignupPage = () => {
   const [name, setName] = useState("");
@@ -22,6 +23,7 @@ const SignupPage = () => {
     if (session) {
       navigate("/dashboard");
     }
+    console.log(window.location.origin);
   }, [session, navigate]);
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -37,12 +39,14 @@ const SignupPage = () => {
     }
   };
 
-   const handleSocialLogin = async (provider: 'google' | 'apple') => {
+  const handleSocialLogin = async (provider: 'google' | 'apple') => {
+     
     try {
+      alert(window.location.origin);
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          //redirectTo: `${window.location.origin}/dashboard`
+          redirectTo: `${window.location.origin}/dashboard`
         }
       });
       if (error) throw error;
