@@ -741,7 +741,7 @@ const StoreCustomizer = () => {
                   <CardHeader>
                     <CardTitle>Cover Image</CardTitle>
                     <CardDescription>
-                      You can add multiple images on your hero display to spice up your storefront!
+                      You can add multiple images on your hero display to spice up your StoreFront!
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -792,7 +792,7 @@ const StoreCustomizer = () => {
               <CardHeader>
                     <CardTitle>Store Logo</CardTitle>
                 <CardDescription>
-                      Upload your store logo to display in the header and on your storefront.
+                      Upload your store logo to display in the header and on your StoreFront.
                 </CardDescription>
               </CardHeader>
                   <CardContent className="space-y-4">

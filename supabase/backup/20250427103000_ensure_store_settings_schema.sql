@@ -33,7 +33,7 @@ CREATE INDEX IF NOT EXISTS store_settings_store_slug_idx ON public.store_setting
 CREATE INDEX IF NOT EXISTS store_settings_is_published_idx ON public.store_settings (is_published);
 
 -- Add comments to explain the table and key columns
-COMMENT ON TABLE public.store_settings IS 'Stores configuration for user storefronts';
+COMMENT ON TABLE public.store_settings IS 'Stores configuration for user StoreFronts';
 COMMENT ON COLUMN public.store_settings.user_id IS 'The user who owns this store';
 COMMENT ON COLUMN public.store_settings.store_slug IS 'Unique slug for store URL routing';
 COMMENT ON COLUMN public.store_settings.is_published IS 'Indicates whether the store has been published and is publicly visible';

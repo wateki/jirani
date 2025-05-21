@@ -559,7 +559,7 @@ const LandingPage = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             <FeatureCard 
               icon={<Palette className="h-12 w-12 text-primary" />}
-              title="Custom Storefronts"
+              title="Custom StoreFronts"
               description="Build a store that matches your brand with easy customization tools for colors, text, and images."
             />
             <FeatureCard 

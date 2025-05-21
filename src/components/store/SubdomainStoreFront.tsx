@@ -2,13 +2,13 @@ import { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import StoreRouter from "./StoreRouter";
-import Storefront from "./Storefront";
+import StoreFront from "./StoreFront";
 import { CartProvider } from "@/contexts/CartContext";
 import type { Database } from "@/integrations/supabase/types";
 
 type StoreSettings = Database['public']['Tables']['store_settings']['Row'];
 
-const SubdomainStorefront = () => {
+const SubdomainStoreFront = () => {
   const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -96,4 +96,4 @@ const SubdomainStorefront = () => {
   );
 };
 
-export default SubdomainStorefront; 
+export default SubdomainStoreFront; 

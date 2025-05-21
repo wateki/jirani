@@ -74,7 +74,7 @@ Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-trick
 
 # Shopify Builder Kit
 
-A toolkit for building and customizing Shopify-like storefronts.
+A toolkit for building and customizing Shopify-like StoreFronts.
 
 ## Recent Updates
 
