@@ -465,7 +465,7 @@ const LandingPage = () => {
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center">
             <Store className="h-8 w-8 text-primary mr-2" />
-            <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent">BiasharaBuilder</span>
+            <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent">Jirani</span>
           </div>
           <nav className="hidden md:flex items-center space-x-8">
             <a href="#features" className="text-gray-600 hover:text-primary transition-colors">Features</a>
@@ -520,7 +520,7 @@ const LandingPage = () => {
                 <div className="hero-image-shine">
                   <img 
                     src="/lovable-uploads/6c799b61-bc0c-414d-abfa-06eb3d07a50e.png" 
-                    alt="BiasharaBuilder store customization interface" 
+                    alt="Jirani store customization interface" 
                     className="rounded-lg shadow-xl relative z-10 hero-image border border-gray-100" 
                   />
                 </div>
@@ -655,7 +655,7 @@ const LandingPage = () => {
                 </div>
               </div>
               <p className="text-gray-600">
-                "BiasharaBuilder helped me take my small clothing business online. The M-Pesa integration made it easy for my customers to pay, and sales have increased by 40%!"
+                "Jirani helped me take my small clothing business online. The M-Pesa integration made it easy for my customers to pay, and sales have increased by 40%!"
               </p>
             </Card>
             
@@ -693,7 +693,7 @@ const LandingPage = () => {
         <div className="container mx-auto px-4 text-center">
           <h2 className="text-3xl font-bold mb-6">Ready to Grow Your Business Online?</h2>
           <p className="text-xl mb-8 max-w-2xl mx-auto">
-            Join hundreds of successful businesses across East Africa already using BiasharaBuilder.
+            Join hundreds of successful businesses across East Africa already using Jirani.
           </p>
           <Button size="lg" variant="secondary" className="bg-white text-primary hover:bg-gray-100" asChild>
             <Link to="/signup">Start Your Free Trial</Link>
@@ -790,7 +790,7 @@ const LandingPage = () => {
           
           <div className="max-w-3xl mx-auto grid gap-6">
             <FaqItem 
-              question="How do I get started with BiasharaBuilder?"
+              question="How do I get started with Jirani?"
               answer="Simply sign up for a free 14-day trial. No credit card required. You can build your store, add products, and customize everything before deciding on a plan."
             />
             <FaqItem 
@@ -798,12 +798,12 @@ const LandingPage = () => {
               answer="Yes! We have full integration with M-Pesa and other local payment methods to make it easy for your customers to purchase your products."
             />
             <FaqItem 
-              question="Do I need technical skills to use BiasharaBuilder?"
-              answer="Not at all! Our platform is designed to be user-friendly. If you can use social media, you can build and manage your online store with BiasharaBuilder."
+              question="Do I need technical skills to use Jirani?"
+              answer="Not at all! Our platform is designed to be user-friendly. If you can use social media, you can build and manage your online store with Jirani."
             />
             <FaqItem 
               question="Can I sell both physical and digital products?"
-              answer="Yes, BiasharaBuilder supports both physical products that need shipping and digital products like e-books or courses that can be delivered instantly."
+              answer="Yes, Jirani supports both physical products that need shipping and digital products like e-books or courses that can be delivered instantly."
             />
             <FaqItem 
               question="Is there a limit to how many products I can sell?"
@@ -820,7 +820,7 @@ const LandingPage = () => {
             <div>
               <div className="flex items-center mb-4">
                 <Store className="h-6 w-6 text-accent mr-2" />
-                <span className="text-lg font-bold">BiasharaBuilder</span>
+                <span className="text-lg font-bold">Jirani</span>
               </div>
               <p className="text-gray-400">
                 Empowering East African businesses with powerful e-commerce tools.
@@ -872,7 +872,7 @@ const LandingPage = () => {
                   <svg className="h-5 w-5 text-gray-400 mr-2 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                   </svg>
-                  <span className="text-gray-400">support@biasharabuilder.com</span>
+                  <span className="text-gray-400">support@jirani.com</span>
                 </li>
                 <li className="flex items-start">
                   <svg className="h-5 w-5 text-gray-400 mr-2 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -885,7 +885,7 @@ const LandingPage = () => {
             </div>
           </div>
           <div className="border-t border-gray-800 mt-12 pt-8 text-center text-gray-400">
-            <p>&copy; {new Date().getFullYear()} BiasharaBuilder. All rights reserved.</p>
+            <p>&copy; {new Date().getFullYear()} Jirani. All rights reserved.</p>
           </div>
         </div>
       </footer>

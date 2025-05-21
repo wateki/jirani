@@ -11,8 +11,8 @@ import { SessionContextProvider } from "@supabase/auth-helpers-react";
 import Index from "./pages/Index";
 import Dashboard from "./components/Dashboard";
 import StoreCustomizer from "./components/StoreCustomizer";
-import StoreFront from "./components/store/StoreFront";
-import SubdomainStoreFront from "./components/store/SubdomainStoreFront";
+import Storefront from "./components/store/Storefront";
+import SubdomainStorefront from "./components/store/SubdomainStorefront";
 import LoginPage from "./components/LoginPage";
 import SignupPage from "./components/SignupPage";
 import OrderManagement from "./components/store/OrderManagement";
@@ -85,7 +85,7 @@ const Root = () => {
               <Toaster />
               <Sonner />
               <Routes>
-                <Route path="/*" element={<SubdomainStoreFront />} />
+                <Route path="/*" element={<SubdomainStorefront />} />
               </Routes>
             </BrowserRouter>
           </TooltipProvider>
@@ -162,7 +162,7 @@ const Root = () => {
                 <Route path="/account" element={<Navigate to="/dashboard/account" replace />} />
                 
                 {/* Store routes - ensure consistent routing for /store/:storeSlug pattern */}
-                <Route path="/store/:storeSlug/*" element={<StoreFront />} />
+                <Route path="/store/:storeSlug/*" element={<Storefront />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </BrowserRouter>

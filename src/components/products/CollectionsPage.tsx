@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { ViewCollectionDialog } from "./ViewCollectionDialog";
 import { EditCollectionDialog } from "./EditCollectionDialog";
 import { CreateCollectionDialog } from "./CreateCollectionDialog";
 import type { Database } from "@/integrations/supabase/types";
+import { getUserStoreId } from "@/utils/store";
 
 type Collection = Database['public']['Tables']['categories']['Row'];
 type CollectionUpdate = Database['public']['Tables']['categories']['Update'];
@@ -23,15 +24,51 @@ const CollectionsPage = () => {
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [storeId, setStoreId] = useState<string | null>(null);
+  const [isLoadingStoreId, setIsLoadingStoreId] = useState(true);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: collections, isLoading } = useQuery({
-    queryKey: ['categories'],
+  // Fetch the user's store ID
+  useEffect(() => {
+    const fetchStoreId = async () => {
+      setIsLoadingStoreId(true);
+      try {
+        const id = await getUserStoreId();
+        if (!id) {
+          toast({
+            variant: "destructive",
+            title: "Store not found",
+            description: "Could not find your store. Please contact support."
+          });
+        } else {
+          setStoreId(id);
+        }
+      } catch (error) {
+        console.error("Error fetching store ID:", error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Could not load your store information"
+        });
+      } finally {
+        setIsLoadingStoreId(false);
+      }
+    };
+
+    fetchStoreId();
+  }, [toast]);
+
+  // Fetch collections for the specific store
+  const { data: collections, isLoading: isLoadingCollections } = useQuery({
+    queryKey: ['categories', storeId],
     queryFn: async () => {
+      if (!storeId) return [];
+      
       const { data, error } = await supabase
         .from('categories')
-        .select('*');
+        .select('*')
+        .eq('store_id', storeId); // Filter by store ID for RLS security
       
       if (error) {
         toast({
@@ -43,19 +80,27 @@ const CollectionsPage = () => {
       }
       
       return data;
-    }
+    },
+    enabled: !!storeId, // Only run the query when storeId is available
   });
 
+  // Delete collection with store ID check for security
   const deleteCollection = useMutation({
     mutationFn: async (collectionId: string) => {
+      if (!storeId) {
+        throw new Error("Store ID not found");
+      }
+      
       const { error } = await supabase
         .from('categories')
         .delete()
-        .eq('id', collectionId);
+        .eq('id', collectionId)
+        .eq('store_id', storeId); // Ensure RLS security
+        
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      queryClient.invalidateQueries({ queryKey: ['categories', storeId] });
       toast({
         title: "Success",
         description: "Collection deleted successfully"
@@ -70,16 +115,23 @@ const CollectionsPage = () => {
     }
   });
 
+  // Update collection with store ID check for security
   const updateCollection = useMutation({
     mutationFn: async (collection: CollectionUpdate) => {
+      if (!storeId) {
+        throw new Error("Store ID not found");
+      }
+      
       const { error } = await supabase
         .from('categories')
         .update(collection)
-        .eq('id', collection.id);
+        .eq('id', collection.id)
+        .eq('store_id', storeId); // Ensure RLS security
+        
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      queryClient.invalidateQueries({ queryKey: ['categories', storeId] });
       toast({
         title: "Success",
         description: "Collection updated successfully"
@@ -94,15 +146,27 @@ const CollectionsPage = () => {
     }
   });
 
+  // Create collection (store ID is handled in the CreateCollectionDialog)
   const createCollection = useMutation({
     mutationFn: async (collection: CollectionInsert) => {
+      if (!storeId) {
+        throw new Error("Store ID not found");
+      }
+      
+      // Ensure the correct store ID is set
+      const collectionWithStoreId = {
+        ...collection,
+        store_id: storeId
+      };
+      
       const { error } = await supabase
         .from('categories')
-        .insert(collection);
+        .insert(collectionWithStoreId);
+        
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      queryClient.invalidateQueries({ queryKey: ['categories', storeId] });
       toast({
         title: "Success",
         description: "Collection created successfully"
@@ -139,11 +203,14 @@ const CollectionsPage = () => {
     collection.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Display loading state while fetching store ID
+  const isLoading = isLoadingStoreId || (storeId && isLoadingCollections);
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Collections</CardTitle>
-        <Button onClick={() => setIsCreateDialogOpen(true)}>
+        <Button onClick={() => setIsCreateDialogOpen(true)} disabled={!storeId}>
           <Plus className="mr-2 h-4 w-4" />
           Add Collection
         </Button>

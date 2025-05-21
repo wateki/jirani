@@ -92,7 +92,7 @@ export const DeliveryOptionsManagement = () => {
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'USD',
+      currency: 'KES',
     }).format(price)
   }
 

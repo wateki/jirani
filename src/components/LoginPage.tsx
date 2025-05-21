@@ -40,7 +40,7 @@ const LoginPage = () => {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${window.location.origin}/dashboard`
+          //redirectTo: `${window.location.origin}/dashboard`
         }
       });
       if (error) throw error;
@@ -55,7 +55,7 @@ const LoginPage = () => {
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center">
             <ShoppingBag className="h-8 w-8 text-orange-500 mr-2" />
-            <span className="text-2xl font-bold">ShopifyBuilder</span>
+            <span className="text-2xl font-bold">Jirani</span>
           </Link>
         </div>
         
@@ -63,7 +63,7 @@ const LoginPage = () => {
           <CardHeader>
             <CardTitle>Sign in to your account</CardTitle>
             <CardDescription>
-              Enter your email and password to access your store dashboard
+              Enter your email and password to access your Jirani dashboard
             </CardDescription>
           </CardHeader>
           <CardContent>

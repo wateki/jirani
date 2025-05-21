@@ -23,7 +23,11 @@ interface ProductFormData {
   category_id: string;
 }
 
-const ProductForm = () => {
+interface ProductFormProps {
+  isViewMode?: boolean;
+}
+
+const ProductForm = ({ isViewMode = false }: ProductFormProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -32,6 +36,7 @@ const ProductForm = () => {
   const [sku, setSku] = useState<string>("");
   const [storeId, setStoreId] = useState<string | null>(null);
   const [fetchingStore, setFetchingStore] = useState(false);
+  const [product, setProduct] = useState<any>(null);
   
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -39,6 +44,51 @@ const ProductForm = () => {
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<ProductFormData>();
 
   const productName = watch("name");
+  
+  // Get product ID from URL if in view/edit mode
+  const productId = window.location.pathname.split('/').filter(Boolean).pop();
+  
+  // Fetch the product data if in view/edit mode
+  useEffect(() => {
+    if (productId && productId !== 'new') {
+      fetchProductDetails(productId);
+    }
+  }, [productId]);
+  
+  const fetchProductDetails = async (id: string) => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*, categories(*)')
+        .eq('id', id)
+        .single();
+        
+      if (error) throw error;
+      
+      if (data) {
+        setProduct(data);
+        // Populate form fields
+        setValue("name", data.name);
+        setValue("description", data.description || '');
+        setValue("price", data.price);
+        setValue("stock_quantity", data.stock_quantity || 0);
+        setValue("category_id", data.category_id || '');
+        setSelectedCategory(data.category_id || '');
+        setSku(data.sku || '');
+        setImageUrl(data.image_url);
+      }
+    } catch (error) {
+      console.error('Error fetching product details:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Could not load product details"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Fetch the store ID when component mounts
   useEffect(() => {
@@ -175,35 +225,59 @@ const ProductForm = () => {
     setIsLoading(true);
     try {
       // Upload image if one was selected
-      let finalImageUrl = null;
+      let finalImageUrl = imageUrl;
       if (imageFile) {
         finalImageUrl = await uploadImageToStorage(imageFile);
       }
 
-      const { error } = await supabase
-        .from('products')
-        .insert({
+      const productData = {
           ...data,
           user_id: user.id,
           store_id: storeId,
           price: parseFloat(data.price.toString()),
           stock_quantity: parseInt(data.stock_quantity.toString()),
           image_url: finalImageUrl,
-          sku: sku // Use the generated SKU
-        });
+        sku: sku
+      };
+
+      let error;
+      
+      // Check if we're updating or creating
+      if (productId && productId !== 'new') {
+        // Update existing product
+        const { error: updateError } = await supabase
+          .from('products')
+          .update(productData)
+          .eq('id', productId)
+          .eq('store_id', storeId); // Ensure RLS security
+          
+        error = updateError;
+      } else {
+        // Create new product
+        const { error: insertError } = await supabase
+          .from('products')
+          .insert(productData);
+          
+        error = insertError;
+      }
 
       if (error) throw error;
 
       toast({
         title: "Success",
-        description: "Product created successfully",
+        description: productId && productId !== 'new' 
+          ? "Product updated successfully" 
+          : "Product created successfully",
       });
-      navigate('/products');
+
+      // Redirect back to products page
+      navigate('/dashboard/products');
     } catch (error: any) {
+      console.error('Error saving product:', error);
       toast({
         variant: "destructive",
-        title: "Error creating product",
-        description: error.message,
+        title: "Error",
+        description: error.message || "There was an error saving the product",
       });
     } finally {
       setIsLoading(false);
@@ -211,64 +285,88 @@ const ProductForm = () => {
   };
 
   return (
-    <div className="container mx-auto p-6">
+    <div className="container mx-auto py-8 px-4">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">
+          {isViewMode ? "Product Details" : productId && productId !== 'new' ? "Edit Product" : "Add New Product"}
+        </h1>
+        <div className="flex space-x-2">
+          {isViewMode ? (
+            <Button onClick={() => navigate(`/dashboard/products/${productId}/edit`)}>
+              Edit Product
+            </Button>
+          ) : (
+            <Button variant="outline" onClick={() => navigate('/dashboard/products')}>
+              Cancel
+            </Button>
+          )}
+        </div>
+      </div>
+
       <Card>
         <CardHeader>
-          <CardTitle>Create New Product</CardTitle>
+          <CardTitle>
+            {isViewMode ? "Product Information" : "Product Details"}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-            <div className="space-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div>
               <Label htmlFor="name">Product Name</Label>
               <Input
                 id="name"
+                    type="text"
+                    disabled={isLoading || isViewMode}
+                    placeholder="Enter product name"
                 {...register("name", { required: "Product name is required" })}
               />
-              {errors.name && (
-                <p className="text-sm text-red-500">{errors.name.message}</p>
-              )}
+                  {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name.message}</p>}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                {...register("description")}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="price">Price</Label>
+                <div>
+                  <Label htmlFor="price">Price (KSh)</Label>
                 <Input
                   id="price"
                   type="number"
                   step="0.01"
-                  {...register("price", { required: "Price is required" })}
+                    min="0"
+                    disabled={isLoading || isViewMode}
+                    placeholder="0.00"
+                    {...register("price", { 
+                      required: "Price is required",
+                      min: { value: 0, message: "Price must be greater than 0" }
+                    })}
                 />
-                {errors.price && (
-                  <p className="text-sm text-red-500">{errors.price.message}</p>
-                )}
+                  {errors.price && <p className="text-red-500 text-sm mt-1">{errors.price.message}</p>}
               </div>
 
-              <div className="space-y-2">
+                <div>
                 <Label htmlFor="stock_quantity">Stock Quantity</Label>
                 <Input
                   id="stock_quantity"
                   type="number"
-                  {...register("stock_quantity", { required: "Stock quantity is required" })}
+                    min="0"
+                    disabled={isLoading || isViewMode}
+                    placeholder="0"
+                    {...register("stock_quantity", { 
+                      required: "Stock quantity is required",
+                      min: { value: 0, message: "Stock quantity must be positive" }
+                    })}
                 />
-                {errors.stock_quantity && (
-                  <p className="text-sm text-red-500">{errors.stock_quantity.message}</p>
-                )}
-              </div>
+                  {errors.stock_quantity && <p className="text-red-500 text-sm mt-1">{errors.stock_quantity.message}</p>}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="category">Collection</Label>
-              <Select onValueChange={handleCategoryChange} disabled={loadingCategories || !storeId}>
+                <div>
+                  <Label htmlFor="category">Category</Label>
+                  <Select
+                    disabled={loadingCategories || isLoading || isViewMode}
+                    value={selectedCategory}
+                    onValueChange={handleCategoryChange}
+                  >
                 <SelectTrigger>
-                  <SelectValue placeholder={loadingCategories ? "Loading collections..." : "Select a collection"} />
+                      <SelectValue placeholder="Select a category" />
                 </SelectTrigger>
                 <SelectContent>
                   {categories?.map((category) => (
@@ -276,95 +374,103 @@ const ProductForm = () => {
                       {category.name}
                     </SelectItem>
                   ))}
-                  {categories?.length === 0 && (
-                    <SelectItem value="empty" disabled>
-                      No collections found. Please create one first.
-                    </SelectItem>
-                  )}
                 </SelectContent>
               </Select>
             </div>
 
-            {sku && (
-              <div className="space-y-2">
-                <Label htmlFor="sku">SKU (Generated)</Label>
+                <div>
+                  <Label htmlFor="sku">SKU</Label>
+                  <div className="flex space-x-2">
                 <Input
                   id="sku"
                   value={sku}
-                  readOnly
-                  className="bg-gray-50"
-                />
-                <p className="text-xs text-gray-500">
-                  This SKU is automatically generated based on the collection and product name
-                </p>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <Label>Product Image</Label>
-              {!imageUrl ? (
-                <div className="border-2 border-dashed rounded-md p-6 flex flex-col items-center justify-center relative">
-                  <div className="mb-4">
-                    <Upload className="h-8 w-8 text-gray-400" />
+                      onChange={(e) => setSku(e.target.value)} 
+                      disabled={isLoading || isViewMode}
+                      placeholder="Auto-generated"
+                    />
                   </div>
-                  <p className="text-sm text-gray-500">Drag and drop image here</p>
-                  <p className="text-xs text-gray-400 mt-1 mb-3">
-                    SVG, PNG, JPG or GIF (max. 2MB)
+                  <p className="text-gray-500 text-xs mt-1">
+                    SKU is auto-generated based on category and product name, but can be customized
                   </p>
-                  <label htmlFor="product-image-upload" className="cursor-pointer">
-                    <div className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm">
-                      Select Image
+                </div>
                     </div>
-                  </label>
-                  <Input
-                    id="product-image-upload"
-                    type="file"
-                    accept="image/*"
-                    className="sr-only"
-                    onChange={handleImageUpload}
+
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    disabled={isLoading || isViewMode}
+                    placeholder="Enter product description"
+                    className="h-32"
+                    {...register("description")}
                   />
                 </div>
-              ) : (
+
+                <div>
+                  <Label>Product Image</Label>
+                  <div className="mt-2 border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
+                    {imageUrl ? (
                 <div className="relative">
-                  <img src={imageUrl} alt="Product preview" className="rounded-md max-h-64 object-contain" />
+                        <img
+                          src={imageUrl}
+                          alt="Product preview"
+                          className="mx-auto max-h-48 object-contain"
+                        />
+                        {!isViewMode && (
                   <Button
                     type="button"
-                    variant="destructive"
-                    size="icon"
-                    className="absolute top-2 right-2"
+                            variant="ghost"
+                            size="sm"
                     onClick={handleRemoveImage}
+                            className="absolute top-0 right-0 text-red-500 bg-white rounded-full w-8 h-8 p-0 shadow"
                   >
                     <X className="h-4 w-4" />
                   </Button>
+                        )}
+                      </div>
+                    ) : (
+                      !isViewMode && (
+                        <div>
+                          <Upload className="mx-auto h-12 w-12 text-gray-400" />
+                          <label htmlFor="image-upload" className="cursor-pointer block mt-2">
+                            <span className="text-primary font-medium">Click to upload</span>
+                            <span className="text-gray-500"> or drag and drop</span>
+                            <Input
+                              id="image-upload"
+                              type="file"
+                              accept="image/*"
+                              onChange={handleImageUpload}
+                              className="sr-only"
+                              disabled={isLoading}
+                            />
+                          </label>
+                          <p className="text-xs text-gray-500 mt-1">PNG, JPG, GIF up to 5MB</p>
+                        </div>
+                      )
+                    )}
+                  </div>
                 </div>
-              )}
+              </div>
             </div>
 
-            <div className="flex justify-end space-x-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => navigate('/products')}
-              >
+            {!isViewMode && (
+              <div className="flex justify-end space-x-3">
+                <Button variant="outline" type="button" onClick={() => navigate('/dashboard/products')}>
                 Cancel
               </Button>
-              <Button 
-                type="submit" 
-                disabled={isLoading || uploadingImage || fetchingStore || !storeId || categories?.length === 0}
-              >
-                {isLoading || uploadingImage || fetchingStore ? (
+                <Button type="submit" disabled={isLoading || uploadingImage}>
+                  {isLoading || uploadingImage ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    <span>
-                      {uploadingImage ? "Uploading Image..." : 
-                       fetchingStore ? "Loading Store..." : "Creating..."}
-                    </span>
+                      {uploadingImage ? "Uploading Image..." : "Saving..."}
                   </>
                 ) : (
-                  "Create Product"
+                    "Save Product"
                 )}
               </Button>
             </div>
+            )}
           </form>
         </CardContent>
       </Card>

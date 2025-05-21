@@ -1,5 +1,4 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +9,7 @@ import ProductList from "./ProductList";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import type { Database } from "@/integrations/supabase/types";
+import { getUserStoreId } from "@/utils/store";
 
 type Product = Database['public']['Tables']['products']['Row'] & {
   categories?: Database['public']['Tables']['categories']['Row'] | null;
@@ -18,13 +18,48 @@ type Product = Database['public']['Tables']['products']['Row'] & {
 const ProductsPage = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [storeId, setStoreId] = useState<string | null>(null);
+  const [isLoadingStoreId, setIsLoadingStoreId] = useState(true);
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  // Fetch the user's store ID
+  useEffect(() => {
+    const fetchStoreId = async () => {
+      setIsLoadingStoreId(true);
+      try {
+        const id = await getUserStoreId();
+        if (!id) {
+          toast({
+            variant: "destructive",
+            title: "Store not found",
+            description: "Could not find your store. Please contact support."
+          });
+        } else {
+          setStoreId(id);
+        }
+      } catch (error) {
+        console.error("Error fetching store ID:", error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Could not load your store information"
+        });
+      } finally {
+        setIsLoadingStoreId(false);
+      }
+    };
+
+    fetchStoreId();
+  }, [toast]);
+
+  // Fetch products for the specific store
   const { data: products, isLoading: isLoadingProducts } = useQuery({
-    queryKey: ['products'],
+    queryKey: ['products', storeId],
     queryFn: async () => {
+      if (!storeId) return [];
+      
       const { data, error } = await supabase
         .from('products')
         .select(`
@@ -33,7 +68,8 @@ const ProductsPage = () => {
             id,
             name
           )
-        `);
+        `)
+        .eq('store_id', storeId); // Filter by store ID for RLS security
       
       if (error) {
         toast({
@@ -45,15 +81,20 @@ const ProductsPage = () => {
       }
       
       return data as Product[];
-    }
+    },
+    enabled: !!storeId, // Only run the query when storeId is available
   });
 
+  // Fetch categories for the specific store
   const { data: categories } = useQuery({
-    queryKey: ['categories'],
+    queryKey: ['categories', storeId],
     queryFn: async () => {
+      if (!storeId) return [];
+      
       const { data, error } = await supabase
         .from('categories')
-        .select('*');
+        .select('*')
+        .eq('store_id', storeId); // Filter by store ID for RLS security
       
       if (error) {
         toast({
@@ -65,19 +106,27 @@ const ProductsPage = () => {
       }
       
       return data;
-    }
+    },
+    enabled: !!storeId, // Only run the query when storeId is available
   });
 
+  // Delete product with store ID check
   const deleteProduct = useMutation({
     mutationFn: async (productId: string) => {
+      if (!storeId) {
+        throw new Error("Store ID not found");
+      }
+      
       const { error } = await supabase
         .from('products')
         .delete()
-        .eq('id', productId);
+        .eq('id', productId)
+        .eq('store_id', storeId); // Ensure RLS security
+        
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['products', storeId] });
       toast({
         title: "Success",
         description: "Product deleted successfully"
@@ -94,15 +143,18 @@ const ProductsPage = () => {
 
   const filteredProducts = products?.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = !categoryFilter || product.category_id === categoryFilter;
+    const matchesCategory = !categoryFilter || categoryFilter === "all" || product.category_id === categoryFilter;
     return matchesSearch && matchesCategory;
   });
+
+  // Display loading state while fetching store ID
+  const isLoading = isLoadingStoreId || (storeId && isLoadingProducts);
 
   return (
     <div>
       <div className="flex flex-row items-center justify-between mb-6">
         <h2 className="text-2xl font-semibold">Items</h2>
-        <Button onClick={() => navigate('/products/new')}>
+        <Button onClick={() => navigate('/dashboard/products/new')}>
           <Plus className="mr-2 h-4 w-4" />
           Add Item
         </Button>
@@ -136,7 +188,7 @@ const ProductsPage = () => {
       
       <ProductList 
         products={filteredProducts || []} 
-        isLoading={isLoadingProducts}
+        isLoading={isLoading}
         onDelete={(id) => deleteProduct.mutate(id)}
       />
     </div>

@@ -7,7 +7,7 @@ import type { Database } from "@/integrations/supabase/types";
 
 type StoreSettings = Database['public']['Tables']['store_settings']['Row'];
 
-const StoreFront = () => {
+const Storefront = () => {
   const { storeSlug } = useParams<{ storeSlug: string }>();
   const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -77,4 +77,4 @@ const StoreFront = () => {
   );
 };
 
-export default StoreFront; 
+export default Storefront; 

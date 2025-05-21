@@ -62,7 +62,7 @@ export const columns: ColumnDef<any>[] = [
       const amount = parseFloat(row.original.outlet_overview?.total_revenue || "0")
       const formatted = new Intl.NumberFormat("en-US", {
         style: "currency",
-        currency: "USD"
+        currency: "KES"
       }).format(amount)
 
       return formatted

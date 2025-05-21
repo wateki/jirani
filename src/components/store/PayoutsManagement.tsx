@@ -164,7 +164,7 @@ const formatDate = (dateString: string | null | undefined): string => {
 const formatCurrency = (amount: number): string => {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'USD',
+    currency: 'KES',
   }).format(amount);
 };
 
@@ -788,13 +788,13 @@ const PayoutsManagement = () => {
                     <FormLabel>Amount</FormLabel>
                     <FormControl>
                       <div className="relative">
-                        <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                        <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">KSh</span>
                         <Input 
                           type="number" 
                           step="0.01"
                           min="1"
                           max={wallet?.available_balance || 0}
-                          className="pl-8"
+                          className="pl-12"
                           placeholder="0.00"
                           {...field}
                           onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}

@@ -114,19 +114,51 @@ const StoreCollectionsPage = ({ primaryColor, storeName = "Ji", storeSettings }:
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [storeId, setStoreId] = useState<string | null>(null);
   const { addToCart, getCartItemsCount } = useCart();
   const { toast } = useToast();
 
   // Define the store path for links
   const storePath = storeSlug ? `/store/${storeSlug}` : '';
 
-  // Fetch collections
+  // Fetch store ID first
+  useEffect(() => {
+    async function fetchStoreId() {
+      if (!storeSlug) return;
+      
+      try {
+        const { data: storeData, error: storeError } = await supabase
+          .from('store_settings')
+          .select('id')
+          .eq('store_slug', storeSlug)
+          .single();
+        
+        if (storeError) {
+          console.error('Error fetching store ID:', storeError);
+          return;
+        }
+        
+        if (storeData) {
+          setStoreId(storeData.id);
+        }
+      } catch (error) {
+        console.error('Error fetching store ID:', error);
+      }
+    }
+    
+    fetchStoreId();
+  }, [storeSlug]);
+
+  // Fetch collections for specific store
   useEffect(() => {
     async function fetchCollections() {
+      if (!storeId) return;
+      
       setLoading(true);
       const { data, error } = await supabase
         .from('categories')
-        .select('*');
+        .select('*')
+        .eq('store_id', storeId);
       
       if (error) {
         console.error('Error fetching collections:', error);
@@ -136,12 +168,14 @@ const StoreCollectionsPage = ({ primaryColor, storeName = "Ji", storeSettings }:
       setLoading(false);
     }
     
-    fetchCollections();
-  }, []);
+    if (storeId) {
+      fetchCollections();
+    }
+  }, [storeId]);
 
   // If collectionId is provided, fetch the specific collection and its products
   useEffect(() => {
-    if (collectionId) {
+    if (collectionId && storeId) {
       async function fetchCollectionDetails() {
         setLoading(true);
         
@@ -150,6 +184,7 @@ const StoreCollectionsPage = ({ primaryColor, storeName = "Ji", storeSettings }:
           .from('categories')
           .select('*')
           .eq('id', collectionId)
+          .eq('store_id', storeId) // Ensure collection belongs to this store
           .single();
         
         if (collectionError) {
@@ -161,7 +196,8 @@ const StoreCollectionsPage = ({ primaryColor, storeName = "Ji", storeSettings }:
           const { data: productsData, error: productsError } = await supabase
             .from('products')
             .select('*')
-            .eq('category_id', collectionId);
+            .eq('category_id', collectionId)
+            .eq('store_id', storeId); // Ensure products belong to this store
           
           if (productsError) {
             console.error('Error fetching products:', productsError);
@@ -178,11 +214,11 @@ const StoreCollectionsPage = ({ primaryColor, storeName = "Ji", storeSettings }:
       setSelectedCollection(null);
       setProducts([]);
     }
-  }, [collectionId]);
+  }, [collectionId, storeId]);
 
   // If productId is provided, fetch the specific product
   useEffect(() => {
-    if (productId) {
+    if (productId && storeId) {
       async function fetchProductDetails() {
         setLoading(true);
         
@@ -190,6 +226,7 @@ const StoreCollectionsPage = ({ primaryColor, storeName = "Ji", storeSettings }:
           .from('products')
           .select('*')
           .eq('id', productId)
+          .eq('store_id', storeId) // Ensure product belongs to this store
           .single();
         
         if (error) {
@@ -206,7 +243,7 @@ const StoreCollectionsPage = ({ primaryColor, storeName = "Ji", storeSettings }:
     } else {
       setSelectedProduct(null);
     }
-  }, [productId]);
+  }, [productId, storeId]);
 
   const handleAddToCart = () => {
     if (selectedProduct) {
@@ -333,7 +370,7 @@ const StoreCollectionsPage = ({ primaryColor, storeName = "Ji", storeSettings }:
                   )}
                 </div>
                 <h3 className="font-medium">{product.name}</h3>
-                <p className="text-gray-900 font-bold mt-1">${product.price.toFixed(2)}</p>
+                <p className="text-gray-900 font-bold mt-1">KSh {product.price.toFixed(2)}</p>
               </Link>
             ))}
           </div>
@@ -374,7 +411,7 @@ const StoreCollectionsPage = ({ primaryColor, storeName = "Ji", storeSettings }:
 
           <div>
             <h1 className="text-3xl font-bold mb-4">{selectedProduct.name}</h1>
-            <p className="text-2xl font-bold mb-6">${selectedProduct.price.toFixed(2)}</p>
+            <p className="text-2xl font-bold mb-6">KSh {selectedProduct.price.toFixed(2)}</p>
             
             {selectedProduct.description && (
               <div className="mb-8">

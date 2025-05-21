@@ -445,10 +445,10 @@ const StoreCustomizer = () => {
         .from('store_settings')
         .update({
           is_published: true,
-          slug: storeSlug
+          store_slug: storeSlug
         })
         .eq('user_id', user?.id);
-      
+        
       if (error) throw error;
       
       // Update local state
@@ -570,9 +570,9 @@ const StoreCustomizer = () => {
                           </>
                         ) : (
                           // Show subdomain format for custom domains
-                          <>
-                            <span className="text-purple-600">{derivedStoreSlug}</span>
-                            <span className="text-gray-600">.yourdomain.com</span>
+                      <>
+                        <span className="text-purple-600">{derivedStoreSlug}</span>
+                        <span className="text-gray-600">.yourdomain.com</span>
                           </>
                         )}
                       </>

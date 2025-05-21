@@ -3,6 +3,7 @@ import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { createStore } from "@/utils/store";
+import { log } from "console";
 
 interface AuthContextType {
   session: Session | null;
@@ -23,6 +24,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, currentSession) => {
+        console.log("event", event);
+        console.log("currentSession", currentSession);
         if (event === 'SIGNED_IN') {
           // When user signs in, ensure they have a store
           ensureUserHasStore(currentSession?.user);
@@ -126,6 +129,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw error;
     }
   };
+
+
 
   const signOut = async () => {
     try {

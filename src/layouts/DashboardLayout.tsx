@@ -13,6 +13,7 @@ import {
   SidebarMenuSubItem,
   SidebarMenuSubButton,
   SidebarFooter,
+  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -28,6 +29,7 @@ import {
   Box,
   DollarSign,
   Store,
+  Menu,
 } from "lucide-react";
 import { OutletSelector } from "@/components/outlet-selector";
 
@@ -45,9 +47,14 @@ const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
       <div className="flex min-h-screen w-full">
         <Sidebar>
           <SidebarHeader>
-            <div className="flex items-center p-4">
-              <ShoppingCart className="h-6 w-6 text-orange-500 mr-2" />
-              <span className="font-bold text-lg">ShopifyBuilder</span>
+            <div className="flex items-center justify-between p-4">
+              <div className="flex items-center">
+                <img src="/assets/jirani-logo.svg" alt="Jirani" className="h-8 w-8 mr-2" />
+                <span className="font-bold text-lg text-orange-500">Jirani</span>
+              </div>
+              <div className="block md:hidden">
+                <SidebarTrigger />
+              </div>
             </div>
             <div className="px-4 pb-2">
               <OutletSelector />
@@ -158,7 +165,11 @@ const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
           </SidebarFooter>
         </Sidebar>
 
-        <main className="flex-1 overflow-y-auto bg-gray-50 p-8">
+        <main className="flex-1 overflow-y-auto bg-gray-50 p-3 sm:p-4 md:p-6 lg:p-8">
+          <div className="md:hidden flex items-center mb-4">
+            <SidebarTrigger className="mr-2" />
+            <span className="font-bold text-lg">Jirani</span>
+          </div>
           {children}
         </main>
       </div>
