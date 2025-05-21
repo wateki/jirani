@@ -15,8 +15,8 @@ import Storefront from "./components/store/Storefront";
 import SubdomainStorefront from "./components/store/SubdomainStorefront";
 import LoginPage from "./components/LoginPage";
 import SignupPage from "./components/SignupPage";
-import OrderManagement from "./components/store/OrderManagement";
-import PayoutsManagement from "./components/store/PayoutsManagement";
+/* import OrderManagement from "./components/store/OrderManagement";
+import PayoutsManagement from "./components/store/PayoutsManagement"; */
 import NotFound from "./pages/NotFound";
 import ProductsLayout from "./components/products/ProductsLayout";
 import ProductForm from "./components/products/ProductForm";
@@ -24,6 +24,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import DashboardLayout from "./layouts/DashboardLayout";
 import { dashboardRoutes } from "./routes";
 import getEnvironmentConfig, { isLocalhost } from "./config/environment";
+import { Analytics } from '@vercel/analytics/react';
 
 const queryClient = new QueryClient();
 const supabase = createClient(
@@ -77,11 +78,13 @@ const Root = () => {
   // render the store directly without the dashboard routes
   if (useSubdomainRouting) {
     return (
+      
       <QueryClientProvider client={queryClient}>
         <SessionContextProvider supabaseClient={supabase}>
         <AuthProvider>
           <TooltipProvider>
-            <BrowserRouter>
+              <BrowserRouter>
+                <Analytics/>
               <Toaster />
               <Sonner />
               <Routes>
