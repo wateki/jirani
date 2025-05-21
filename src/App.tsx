@@ -12,14 +12,14 @@ import Index from "./pages/Index";
 import Dashboard from "./components/Dashboard";
 import StoreCustomizer from "./components/StoreCustomizer";
 import Storefront from "@/components/store/Storefront";
-import SubdomainStorefront from "./components/store/SubdomainStorefront";
+import SubdomainStorefront from "@/components/store/SubdomainStorefront";
 import LoginPage from "./components/LoginPage";
 import SignupPage from "./components/SignupPage";
 /* import OrderManagement from "./components/store/OrderManagement";
 import PayoutsManagement from "./components/store/PayoutsManagement"; */
 import NotFound from "./pages/NotFound";
-import ProductsLayout from "./components/products/ProductsLayout";
-import ProductForm from "./components/products/ProductForm";
+import ProductsLayout from "@/components/products/ProductsLayout";
+import ProductForm from "@/components/products/ProductForm";
 import { useAuth } from "@/contexts/AuthContext";
 import DashboardLayout from "./layouts/DashboardLayout";
 import { dashboardRoutes } from "./routes";
