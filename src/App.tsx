@@ -11,7 +11,7 @@ import { SessionContextProvider } from "@supabase/auth-helpers-react";
 import Index from "./pages/Index";
 import Dashboard from "./components/Dashboard";
 import StoreCustomizer from "./components/StoreCustomizer";
-import StoreFront from "@/components/store/Storefront";
+import StoreFront from "@/components/store/StoreFront";
 import SubdomainStoreFront from "@/components/store/SubdomainStoreFront";
 import LoginPage from "./components/LoginPage";
 import SignupPage from "./components/SignupPage";
