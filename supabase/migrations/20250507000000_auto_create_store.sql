@@ -41,13 +41,10 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Create a trigger to create a store when a new user is created
+-- This trigger automatically creates a store for each new user upon signup
 DROP TRIGGER IF EXISTS create_store_after_user_creation ON auth.users;
 
 CREATE TRIGGER create_store_after_user_creation
 AFTER INSERT ON auth.users
 FOR EACH ROW
-EXECUTE FUNCTION public.create_store_for_new_user();
-
--- Add a comment to explain what this trigger does
-COMMENT ON TRIGGER create_store_after_user_creation ON auth.users
-  IS 'Trigger to automatically create a store for each new user upon signup'; 
+EXECUTE FUNCTION public.create_store_for_new_user(); 
