@@ -166,8 +166,18 @@ async function networkFirstWithTimeoutStrategy(request, timeout = 3000) {
       const cache = await caches.open(DYNAMIC_CACHE_NAME);
       // Cache API responses for 5 minutes
       const responseToCache = networkResponse.clone();
-      responseToCache.headers.set('sw-cache-timestamp', Date.now().toString());
-      cache.put(request, responseToCache);
+      
+      // Create a new response with custom headers instead of modifying the immutable one
+      const newHeaders = new Headers(responseToCache.headers);
+      newHeaders.set('sw-cache-timestamp', Date.now().toString());
+      
+      const modifiedResponse = new Response(responseToCache.body, {
+        status: responseToCache.status,
+        statusText: responseToCache.statusText,
+        headers: newHeaders
+      });
+      
+      cache.put(request, modifiedResponse);
     }
     
     return networkResponse;

@@ -85,9 +85,35 @@ const isCustomSubdomain = (): boolean => {
   return false;
 };
 
-// Protected Dashboard Routes
-const ProtectedDashboardRoutes = () => (
-  <>
+// Dashboard Routes Component
+const DashboardRoutes = () => (
+  <Routes>
+    <Route
+      path="/"
+      element={
+        <Suspense fallback={<LoadingSpinner />}>
+          <Index />
+        </Suspense>
+      }
+    />
+    <Route
+      path="/login"
+      element={
+        <Suspense fallback={<LoadingSpinner />}>
+          <LoginPage />
+        </Suspense>
+      }
+    />
+    <Route
+      path="/signup"
+      element={
+        <Suspense fallback={<LoadingSpinner />}>
+          <SignupPage />
+        </Suspense>
+      }
+    />
+
+    {/* Protected Dashboard Routes - moved directly here to fix React Router v6 issue */}
     <Route
       path="/dashboard"
       element={
@@ -143,37 +169,6 @@ const ProtectedDashboardRoutes = () => (
         </ProtectedRoute>
       }
     />
-  </>
-);
-
-// Dashboard Routes Component
-const DashboardRoutes = () => (
-  <Routes>
-    <Route
-      path="/"
-      element={
-        <Suspense fallback={<LoadingSpinner />}>
-          <Index />
-        </Suspense>
-      }
-    />
-    <Route
-      path="/login"
-      element={
-        <Suspense fallback={<LoadingSpinner />}>
-          <LoginPage />
-        </Suspense>
-      }
-    />
-    <Route
-      path="/signup"
-      element={
-        <Suspense fallback={<LoadingSpinner />}>
-          <SignupPage />
-        </Suspense>
-      }
-    />
-    <ProtectedDashboardRoutes />
 
     {/* Redirect old URLs to new dashboard routes */}
     <Route path="/customize" element={<Navigate to="/dashboard/customize" replace />} />
