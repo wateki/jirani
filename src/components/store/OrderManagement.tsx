@@ -36,7 +36,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format, parseISO, isValid } from "date-fns";
-import { Package, Truck, CheckCircle, AlertCircle, CreditCard } from "lucide-react";
+import { Package, Truck, CheckCircle, AlertCircle, CreditCard, ShoppingBag, Eye } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 type Order = Database['public']['Tables']['orders']['Row'] & {
   order_total?: number;
@@ -71,6 +72,7 @@ const paymentStatusOptions = [
 ];
 
 const OrderManagement = () => {
+  const { user } = useAuth();
   const [orders, setOrders] = useState<OrderWithItems[]>([]);
   const [filteredOrders, setFilteredOrders] = useState<OrderWithItems[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<OrderWithItems | null>(null);
@@ -79,10 +81,29 @@ const OrderManagement = () => {
   const [loading, setLoading] = useState(true);
   const [updatingOrder, setUpdatingOrder] = useState(false);
   const { toast } = useToast();
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Check if viewport is mobile width
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    // Initial check
+    checkMobile();
+    
+    // Add event listener for window resize
+    window.addEventListener('resize', checkMobile);
+    
+    // Clean up
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   useEffect(() => {
-    fetchOrders();
-  }, []);
+    if (user) {
+      fetchOrders();
+    }
+  }, [user]);
 
   useEffect(() => {
     if (activeTab === "all") {
@@ -352,6 +373,79 @@ const OrderManagement = () => {
     return items.reduce((total, item) => total + (item.price * item.quantity), 0).toFixed(2);
   };
 
+  // Mobile card view component
+  const renderMobileCards = () => {
+    if (loading) {
+      return (
+        <div className="flex justify-center items-center p-8">
+          <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
+          <span className="ml-3 text-gray-600">Loading orders...</span>
+        </div>
+      );
+    }
+
+    if (filteredOrders.length === 0) {
+      return (
+        <div className="text-center py-8 px-4 border rounded-md bg-gray-50">
+          <ShoppingBag className="h-12 w-12 mx-auto text-gray-400 mb-3" />
+          <p className="text-gray-500">No orders found</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        {filteredOrders.map((order) => {
+          const paymentStatus = order.payments && order.payments.length > 0 
+            ? order.payments[0].status 
+            : 'pending';
+          
+          return (
+            <Card key={order.id} className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="font-medium text-sm">#{order.order_number || order.id.substring(0, 8)}</h3>
+                  <p className="text-xs text-gray-500">{order.customer_name}</p>
+                </div>
+                {getOrderStatusBadge(order.status)}
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <span className="text-xs text-gray-500 block">Date</span>
+                  <span className="text-sm">{formatDate(order.created_at)}</span>
+                </div>
+                <div>
+                  <span className="text-xs text-gray-500 block">Total</span>
+                  <span className="text-sm font-medium">KES {order.total_amount?.toFixed(2) || calculateOrderTotal(order.order_items)}</span>
+                </div>
+                <div>
+                  <span className="text-xs text-gray-500 block">Payment</span>
+                  {getPaymentStatusBadge(paymentStatus)}
+                </div>
+                <div>
+                  <span className="text-xs text-gray-500 block">Items</span>
+                  <span className="text-sm">{order.order_items?.length || 0} items</span>
+                </div>
+              </div>
+              
+              <div className="flex justify-end">
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => handleViewOrder(order)}
+                >
+                  <Eye className="h-4 w-4 mr-1" />
+                  View Details
+                </Button>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <div className="container mx-auto py-8 px-4">
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8">
@@ -381,55 +475,96 @@ const OrderManagement = () => {
           </Tabs>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
-            </div>
-          ) : filteredOrders.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-gray-500">No orders found</p>
-            </div>
-          ) : (
+          {isMobile ? renderMobileCards() : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Order ID</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Payment</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead></TableHead>
+                    <TableHead className="px-2 md:px-4">
+                      <span className="md:hidden">ID</span>
+                      <span className="hidden md:inline">Order ID</span>
+                    </TableHead>
+                    <TableHead className="hidden md:table-cell px-2 md:px-4">
+                      <span className="text-xs md:text-sm">Date</span>
+                    </TableHead>
+                    <TableHead className="px-2 md:px-4">
+                      <span className="text-xs md:text-sm">Customer</span>
+                    </TableHead>
+                    <TableHead className="px-1 md:px-4">
+                      <span className="text-xs md:text-sm">Status</span>
+                    </TableHead>
+                    <TableHead className="hidden lg:table-cell px-2 md:px-4">
+                      <span className="text-xs md:text-sm">Payment</span>
+                    </TableHead>
+                    <TableHead className="text-right px-2 md:px-4">
+                      <span className="md:hidden">Total</span>
+                      <span className="hidden md:inline">Total</span>
+                    </TableHead>
+                    <TableHead className="px-1 md:px-4">
+                      <span className="sr-only md:not-sr-only">Actions</span>
+                      <span className="md:hidden text-xs">•••</span>
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredOrders.map((order) => {
-                    // Get the payment status from the first payment if available
+                  {loading ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="h-24 text-center">
+                        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto"></div>
+                      </TableCell>
+                    </TableRow>
+                  ) : filteredOrders.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="h-24 text-center">
+                        <div className="flex flex-col items-center justify-center">
+                          <ShoppingBag className="h-12 w-12 text-gray-400 mb-3" />
+                          <p className="text-gray-500">No orders found</p>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredOrders.map((order) => {
                     const paymentStatus = order.payments && order.payments.length > 0 
                       ? order.payments[0].status 
                       : 'pending';
                     
                     return (
                       <TableRow key={order.id}>
-                        <TableCell className="font-medium">#{order.order_number || order.id.substring(0, 8)}</TableCell>
-                        <TableCell>{formatDate(order.created_at)}</TableCell>
-                        <TableCell>{order.customer_name}</TableCell>
-                        <TableCell>{getOrderStatusBadge(order.status)}</TableCell>
-                        <TableCell>{getPaymentStatusBadge(paymentStatus)}</TableCell>
-                        <TableCell className="text-right">${order.total_amount.toFixed(2) || calculateOrderTotal(order.order_items)}</TableCell>
-                        <TableCell>
+                          <TableCell className="font-medium px-2 md:px-4">
+                            <span className="text-xs md:text-sm">#{order.order_number || order.id.substring(0, 8)}</span>
+                          </TableCell>
+                          <TableCell className="hidden md:table-cell px-2 md:px-4">
+                            <span className="text-xs md:text-sm">{formatDate(order.created_at)}</span>
+                          </TableCell>
+                          <TableCell className="px-2 md:px-4">
+                            <span className="text-xs md:text-sm">{order.customer_name}</span>
+                          </TableCell>
+                          <TableCell className="px-1 md:px-4">
+                            <div className="text-xs">{getOrderStatusBadge(order.status)}</div>
+                          </TableCell>
+                          <TableCell className="hidden lg:table-cell px-2 md:px-4">
+                            <div className="text-xs">{getPaymentStatusBadge(paymentStatus)}</div>
+                          </TableCell>
+                          <TableCell className="text-right px-2 md:px-4">
+                            <span className="text-xs md:text-sm font-medium">
+                              KES {order.total_amount?.toFixed(2) || calculateOrderTotal(order.order_items)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="px-1 md:px-4">
                           <Button 
                             variant="ghost" 
                             size="sm" 
                             onClick={() => handleViewOrder(order)}
+                              className="h-8 w-8 md:h-9 md:w-auto md:px-3"
                           >
-                            View
+                              <Eye className="h-3 w-3 md:h-4 md:w-4" />
+                              <span className="hidden md:ml-1 md:inline">View</span>
                           </Button>
                         </TableCell>
                       </TableRow>
                     );
-                  })}
+                    })
+                  )}
                 </TableBody>
               </Table>
             </div>
@@ -539,15 +674,15 @@ const OrderManagement = () => {
                         {selectedOrder.order_items.map((item) => (
                           <TableRow key={item.id}>
                             <TableCell>{item.products?.name || "Unknown Product"}</TableCell>
-                            <TableCell className="text-right">${item.price.toFixed(2)}</TableCell>
+                            <TableCell className="text-right">KES {item.price.toLocaleString()}</TableCell>
                             <TableCell className="text-right">{item.quantity}</TableCell>
-                            <TableCell className="text-right">${(item.price * item.quantity).toFixed(2)}</TableCell>
+                            <TableCell className="text-right">KES {(item.price * item.quantity).toLocaleString()}</TableCell>
                           </TableRow>
                         ))}
                         <TableRow>
                           <TableCell colSpan={3} className="text-right font-semibold">Total</TableCell>
                           <TableCell className="text-right font-semibold">
-                            ${selectedOrder.total_amount.toFixed(2) || calculateOrderTotal(selectedOrder.order_items)}
+                            KES {selectedOrder.total_amount.toLocaleString() || calculateOrderTotal(selectedOrder.order_items)}
                           </TableCell>
                         </TableRow>
                       </TableBody>

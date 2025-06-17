@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { CartProvider } from "@/contexts/CartContext";
 import { OutletProvider } from "@/contexts/OutletContext";
+import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { createClient } from "@supabase/supabase-js";
 import { SessionContextProvider } from "@supabase/auth-helpers-react";
 import Index from "./pages/Index";
@@ -82,6 +83,7 @@ const Root = () => {
       <QueryClientProvider client={queryClient}>
         <SessionContextProvider supabaseClient={supabase}>
         <AuthProvider>
+          <FavoritesProvider>
           <TooltipProvider>
               <BrowserRouter>
                 <Analytics/>
@@ -92,6 +94,7 @@ const Root = () => {
               </Routes>
             </BrowserRouter>
           </TooltipProvider>
+          </FavoritesProvider>
         </AuthProvider>
         </SessionContextProvider>
       </QueryClientProvider>
@@ -103,6 +106,7 @@ const Root = () => {
     <QueryClientProvider client={queryClient}>
       <SessionContextProvider supabaseClient={supabase}>
       <AuthProvider>
+        <FavoritesProvider>
         <CartProvider>
             <OutletProvider>
           <TooltipProvider>
@@ -156,6 +160,8 @@ const Root = () => {
                     </ProtectedRoute>
                   }
                 />
+
+
                 
                 {/* Redirect old URLs to new dashboard routes */}
                 <Route path="/customize" element={<Navigate to="/dashboard/customize" replace />} />
@@ -172,6 +178,7 @@ const Root = () => {
           </TooltipProvider>
             </OutletProvider>
         </CartProvider>
+        </FavoritesProvider>
       </AuthProvider>
       </SessionContextProvider>
     </QueryClientProvider>

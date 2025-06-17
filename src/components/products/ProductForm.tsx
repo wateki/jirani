@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { Upload, X, Loader2 } from "lucide-react";
@@ -27,7 +27,7 @@ interface ProductFormProps {
   isViewMode?: boolean;
 }
 
-const ProductForm = ({ isViewMode = false }: ProductFormProps) => {
+const ProductForm = ({ isViewMode: propsViewMode }: ProductFormProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -40,17 +40,19 @@ const ProductForm = ({ isViewMode = false }: ProductFormProps) => {
   
   const { toast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { productId } = useParams<{ productId?: string }>();
   const { user } = useAuth();
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<ProductFormData>();
 
   const productName = watch("name");
   
-  // Get product ID from URL if in view/edit mode
-  const productId = window.location.pathname.split('/').filter(Boolean).pop();
+  // Determine if we're in view mode based on URL or props
+  const isViewMode = propsViewMode || (productId && productId !== 'new' && !location.pathname.includes('/edit'));
   
   // Fetch the product data if in view/edit mode
   useEffect(() => {
-    if (productId && productId !== 'new') {
+    if (productId && productId !== 'new' && productId !== 'edit') {
       fetchProductDetails(productId);
     }
   }, [productId]);
@@ -185,7 +187,8 @@ const ProductForm = ({ isViewMode = false }: ProductFormProps) => {
   const uploadImageToStorage = async (file: File) => {
     setUploadingImage(true);
     try {
-      const result = await uploadProductImage(file, user?.id);
+      // Upload with compression and show stats in console
+      const result = await uploadProductImage(file, user?.id, true);
       if (!result) {
         throw new Error("Failed to upload image");
       }
@@ -243,7 +246,7 @@ const ProductForm = ({ isViewMode = false }: ProductFormProps) => {
       let error;
       
       // Check if we're updating or creating
-      if (productId && productId !== 'new') {
+      if (productId && productId !== 'new' && productId !== 'edit') {
         // Update existing product
         const { error: updateError } = await supabase
           .from('products')
@@ -265,7 +268,7 @@ const ProductForm = ({ isViewMode = false }: ProductFormProps) => {
 
       toast({
         title: "Success",
-        description: productId && productId !== 'new' 
+        description: productId && productId !== 'new' && productId !== 'edit'
           ? "Product updated successfully" 
           : "Product created successfully",
       });
@@ -288,7 +291,7 @@ const ProductForm = ({ isViewMode = false }: ProductFormProps) => {
     <div className="container mx-auto py-8 px-4">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">
-          {isViewMode ? "Product Details" : productId && productId !== 'new' ? "Edit Product" : "Add New Product"}
+          {isViewMode ? "Product Details" : productId && productId !== 'new' && productId !== 'edit' ? "Edit Product" : "Add New Product"}
         </h1>
         <div className="flex space-x-2">
           {isViewMode ? (

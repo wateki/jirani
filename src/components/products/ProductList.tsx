@@ -16,9 +16,11 @@ interface ProductListProps {
   products: Product[];
   isLoading: boolean;
   onDelete?: (id: string) => void;
+  onView?: (product: Product) => void;
+  onEdit?: (product: Product) => void;
 }
 
-const ProductList = ({ products, isLoading, onDelete }: ProductListProps) => {
+const ProductList = ({ products, isLoading, onDelete, onView, onEdit }: ProductListProps) => {
   const navigate = useNavigate();
   const [isMobile, setIsMobile] = useState(false);
 
@@ -124,14 +126,14 @@ const ProductList = ({ products, isLoading, onDelete }: ProductListProps) => {
                   <Button 
                     variant="ghost" 
                     size="sm"
-                    onClick={() => navigate(`/dashboard/products/${product.id}`)}
+                    onClick={() => onView && onView(product)}
                   >
                     <Eye className="h-4 w-4" />
                   </Button>
                   <Button 
                     variant="ghost" 
                     size="sm"
-                    onClick={() => navigate(`/dashboard/products/${product.id}/edit`)}
+                    onClick={() => onEdit && onEdit(product)}
                   >
                     <Edit className="h-4 w-4" />
                   </Button>
@@ -149,6 +151,7 @@ const ProductList = ({ products, isLoading, onDelete }: ProductListProps) => {
             );
           })
         )}
+
       </div>
     );
   }
@@ -211,14 +214,14 @@ const ProductList = ({ products, isLoading, onDelete }: ProductListProps) => {
                     <Button 
                       variant="ghost" 
                       size="sm"
-                        onClick={() => navigate(`/dashboard/products/${product.id}`)}
+                        onClick={() => onView && onView(product)}
                     >
                       <Eye className="h-4 w-4" />
                     </Button>
                     <Button 
                       variant="ghost" 
                       size="sm"
-                        onClick={() => navigate(`/dashboard/products/${product.id}/edit`)}
+                        onClick={() => onEdit && onEdit(product)}
                     >
                       <Edit className="h-4 w-4" />
                     </Button>

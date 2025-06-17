@@ -6,6 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Search, Filter } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import ProductList from "./ProductList";
+import { EditProductModal } from "./EditProductModal";
+import { ProductDetailsModal } from "./ProductDetailsModal";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import type { Database } from "@/integrations/supabase/types";
@@ -14,12 +16,17 @@ import { getUserStoreId } from "@/utils/store";
 type Product = Database['public']['Tables']['products']['Row'] & {
   categories?: Database['public']['Tables']['categories']['Row'] | null;
 };
+type ProductUpdate = Database['public']['Tables']['products']['Update'];
 
 const ProductsPage = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [storeId, setStoreId] = useState<string | null>(null);
   const [isLoadingStoreId, setIsLoadingStoreId] = useState(true);
+  const [editProduct, setEditProduct] = useState<Product | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [viewProduct, setViewProduct] = useState<Product | null>(null);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -110,6 +117,37 @@ const ProductsPage = () => {
     enabled: !!storeId, // Only run the query when storeId is available
   });
 
+  // Update product with store ID check for security
+  const updateProduct = useMutation({
+    mutationFn: async (product: ProductUpdate) => {
+      if (!storeId) {
+        throw new Error("Store ID not found");
+      }
+      
+      const { error } = await supabase
+        .from('products')
+        .update(product)
+        .eq('id', product.id)
+        .eq('store_id', storeId); // Ensure RLS security
+        
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products', storeId] });
+      toast({
+        title: "Success",
+        description: "Product updated successfully"
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Error updating product",
+        description: error.message
+      });
+    }
+  });
+
   // Delete product with store ID check
   const deleteProduct = useMutation({
     mutationFn: async (productId: string) => {
@@ -140,6 +178,20 @@ const ProductsPage = () => {
       });
     }
   });
+
+  const handleView = (product: Product) => {
+    setViewProduct(product);
+    setIsViewModalOpen(true);
+  };
+
+  const handleEdit = (product: Product) => {
+    setEditProduct(product);
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdate = (product: ProductUpdate) => {
+    updateProduct.mutate(product);
+  };
 
   const filteredProducts = products?.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -190,6 +242,26 @@ const ProductsPage = () => {
         products={filteredProducts || []} 
         isLoading={isLoading}
         onDelete={(id) => deleteProduct.mutate(id)}
+        onView={handleView}
+        onEdit={handleEdit}
+      />
+
+      {/* View Product Modal */}
+      {viewProduct && (
+        <ProductDetailsModal
+          product={viewProduct}
+          isOpen={isViewModalOpen}
+          onClose={() => setIsViewModalOpen(false)}
+          onEdit={handleEdit}
+        />
+      )}
+
+      {/* Edit Product Modal */}
+      <EditProductModal
+        product={editProduct}
+        open={isEditModalOpen}
+        onOpenChange={setIsEditModalOpen}
+        onSave={handleUpdate}
       />
     </div>
   );

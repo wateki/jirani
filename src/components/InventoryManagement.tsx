@@ -175,7 +175,7 @@ const InventoryManagement = () => {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="price">Price ($)</Label>
+                        <Label htmlFor="price">Price (KES)</Label>
                         <Input 
                           id="price" 
                           type="number"
@@ -288,7 +288,7 @@ const InventoryManagement = () => {
                         <TableCell className="font-medium">{product.name}</TableCell>
                         <TableCell>{product.sku}</TableCell>
                         <TableCell>{product.category}</TableCell>
-                        <TableCell>${product.price.toFixed(2)}</TableCell>
+                        <TableCell>KES {product.price.toLocaleString()}</TableCell>
                         <TableCell>
                           {product.stock === 0 ? (
                             <span className="flex items-center text-red-600">

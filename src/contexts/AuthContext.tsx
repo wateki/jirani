@@ -2,14 +2,26 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
-import { createStore } from "@/utils/store";
-import { log } from "console";
+import { createStore, createStoreWithTemplate, completeEnhancedRegistration } from "@/utils/store";
+import { BusinessType, StoreTemplate } from "@/types/database";
+
+interface EnhancedRegistrationData {
+  name: string;
+  businessName: string;
+  businessType: BusinessType | null;
+  template: StoreTemplate | null;
+}
 
 interface AuthContextType {
   session: Session | null;
   user: User | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, businessName: string) => Promise<void>;
+  signUpEnhanced: (
+    email: string, 
+    password: string, 
+    registrationData: EnhancedRegistrationData
+  ) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -130,7 +142,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const signUpEnhanced = async (
+    email: string, 
+    password: string, 
+    registrationData: EnhancedRegistrationData
+  ) => {
+    try {
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            business_name: registrationData.businessName,
+            full_name: registrationData.name,
+            business_type: registrationData.businessType?.name,
+          },
+        },
+      });
+      
+      if (signUpError) throw signUpError;
+      
+      // If user is created and auto-confirmed (e.g., in development)
+      if (data?.user) {
+        // Create an enhanced store with business type and template
+        const result = await completeEnhancedRegistration({
+          userId: data.user.id,
+          name: registrationData.name,
+          businessName: registrationData.businessName,
+          businessType: registrationData.businessType,
+          template: registrationData.template,
+        });
+        
+        if (!result.success) {
+          throw new Error("Failed to create store with template");
+        }
+      }
 
+      toast({
+        title: "Account created!",
+        description: "Please check your email to verify your account. Your store has been set up with your selected template.",
+      });
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error signing up",
+        description: error.message,
+      });
+      throw error;
+    }
+  };
 
   const signOut = async () => {
     try {
@@ -151,7 +211,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ session, user, signIn, signUp, signUpEnhanced, signOut }}>
       {children}
     </AuthContext.Provider>
   );

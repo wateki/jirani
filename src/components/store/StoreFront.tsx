@@ -70,8 +70,10 @@ const StoreFront = () => {
     <CartProvider>
       <StoreRouter 
         primaryColor={storeSettings.primary_color || "#c26e6e"} 
+        secondaryColor={storeSettings.secondary_color || "#e74c3c"}
         storeName={storeSettings.store_name}
         storeSettings={storeSettings}
+        useModernTemplate={true}
       />
     </CartProvider>
   );

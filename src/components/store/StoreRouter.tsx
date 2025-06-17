@@ -1,5 +1,10 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import StoreCollectionsPage from "./StoreCollectionsPage";
+import ModernStorePage from "./ModernStorePage";
+import ModernCollectionsPage from "./ModernCollectionsPage";
+import ModernProductPage from "./ModernProductPage";
+import ModernAboutPage from "./ModernAboutPage";
+import FavoritesPage from "./FavoritesPage";
 import CartPage from "./CartPage";
 import CheckoutPage from "./CheckoutPage";
 import OrderConfirmationPage from "./OrderConfirmationPage";
@@ -7,19 +12,27 @@ import type { Database } from "@/integrations/supabase/types";
 
 type StoreRouterProps = {
   primaryColor: string;
+  secondaryColor?: string;
   storeName: string;
   storeSettings?: Database['public']['Tables']['store_settings']['Row'];
+  useModernTemplate?: boolean;
 };
 
-const StoreRouter = ({ primaryColor, storeName, storeSettings }: StoreRouterProps) => {
+const StoreRouter = ({ primaryColor, secondaryColor, storeName, storeSettings, useModernTemplate = true }: StoreRouterProps) => {
+  // Choose which store page to render based on template preference
+  const StorePageComponent = useModernTemplate ? ModernStorePage : StoreCollectionsPage;
+  const CollectionsPageComponent = useModernTemplate ? ModernCollectionsPage : StoreCollectionsPage;
+  const ProductPageComponent = useModernTemplate ? ModernProductPage : StoreCollectionsPage;
+
   return (
     <Routes>
       {/* Main store routes */}
       <Route 
         path="/" 
         element={
-          <StoreCollectionsPage
+          <StorePageComponent
             primaryColor={primaryColor}
+            secondaryColor={secondaryColor}
             storeName={storeName}
             storeSettings={storeSettings}
           />
@@ -30,8 +43,9 @@ const StoreRouter = ({ primaryColor, storeName, storeSettings }: StoreRouterProp
       <Route 
         path="/collections" 
         element={
-          <StoreCollectionsPage
+          <CollectionsPageComponent
             primaryColor={primaryColor}
+            secondaryColor={secondaryColor}
             storeName={storeName}
             storeSettings={storeSettings}
           />
@@ -41,8 +55,9 @@ const StoreRouter = ({ primaryColor, storeName, storeSettings }: StoreRouterProp
       <Route 
         path="/collections/:collectionId" 
         element={
-          <StoreCollectionsPage
+          <CollectionsPageComponent
             primaryColor={primaryColor}
+            secondaryColor={secondaryColor}
             storeName={storeName}
             storeSettings={storeSettings}
           />
@@ -52,10 +67,36 @@ const StoreRouter = ({ primaryColor, storeName, storeSettings }: StoreRouterProp
       <Route 
         path="/collections/:collectionId/products/:productId" 
         element={
-          <StoreCollectionsPage
+          <ProductPageComponent
             primaryColor={primaryColor}
+            secondaryColor={secondaryColor}
             storeName={storeName}
             storeSettings={storeSettings}
+          />
+        } 
+      />
+      
+      {/* About */}
+      <Route 
+        path="/about" 
+        element={
+          <ModernAboutPage
+            primaryColor={primaryColor}
+            secondaryColor={secondaryColor}
+            storeName={storeName}
+            storeSettings={storeSettings}
+          />
+        } 
+      />
+      
+      {/* Favorites */}
+      <Route 
+        path="/favorites" 
+        element={
+          <FavoritesPage
+            primaryColor={primaryColor}
+            secondaryColor={secondaryColor}
+            storeName={storeName}
           />
         } 
       />
@@ -96,7 +137,7 @@ const StoreRouter = ({ primaryColor, storeName, storeSettings }: StoreRouterProp
         } 
       />
       
-      {/* 404 - Redirect to store home */}
+      {/* Catch all - redirect to home */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

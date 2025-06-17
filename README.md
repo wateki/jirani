@@ -133,3 +133,74 @@ See the `docs` folder for detailed documentation on:
 - Product vision and architecture
 - Implementation details
 - Development guidelines
+
+## Features
+
+### 🏪 Multi-Store Management
+- Create and manage multiple store outlets
+- Store-specific product inventory and pricing
+- Centralized dashboard for all outlets
+
+### 🛒 **Real-Time Cart Tracking** (NEW)
+- **Live cart analytics** on business dashboard
+- Real-time monitoring of active shopping sessions
+- Automatic cart abandonment detection (24-hour timeout)
+- Lost revenue tracking from abandoned carts
+- Cart conversion rate analytics
+- No polling - uses Supabase real-time subscriptions for instant updates
+
+### 📦 Product Management
+- Easy product catalog management
+- Category-based organization
+- Multi-image support for products
+- Stock quantity tracking
+- Featured product highlighting
+
+### 🛍️ Customer Shopping Experience
+- Beautiful, customizable storefronts
+- Shopping cart functionality with persistent sessions
+- Responsive design for mobile and desktop
+- Guest checkout support
+- Order tracking and history
+
+### 📊 Business Analytics
+- Real-time sales metrics
+- Customer behavior insights
+- Cart abandonment analysis
+- Revenue tracking per outlet
+- Inventory management insights
+
+### 🔐 Authentication & Security
+- Secure user authentication via Supabase Auth
+- Row Level Security (RLS) for data protection
+- Store owner permissions and access control
+
+### 🎨 Customization
+- Store branding and theming
+- Custom color schemes
+- Logo and banner uploads
+- Personalized store slugs
+
+---
+
+## Cart Tracking & Analytics
+
+The platform now includes comprehensive real-time cart tracking:
+
+### For Business Owners:
+- **Active Carts**: See customers currently shopping in real-time
+- **Abandoned Carts**: Track carts left incomplete after 24 hours
+- **Lost Revenue**: Calculate potential revenue from abandoned carts
+- **Conversion Insights**: Get actionable recommendations to improve sales
+
+### Technical Implementation:
+- **Real-time subscriptions**: No polling, instant updates via Supabase real-time
+- **Efficient database queries**: Optimized analytics functions
+- **Automatic cleanup**: Old cart sessions removed after 30 days
+- **Guest support**: Cart tracking works without user accounts
+
+### Real-time Features:
+- Live cart analytics updates
+- Instant notification of new shopping sessions
+- Automatic abandonment detection
+- Cart-to-order conversion tracking

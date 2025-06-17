@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "react-hot-toast";
 import DashboardLayout from "@/layouts/DashboardLayout";
+import CartAnalytics from "@/components/dashboard/CartAnalytics";
 
 interface DashboardStats {
   totalRevenue: number;
@@ -75,6 +76,7 @@ const Dashboard = () => {
   const [loadingCollections, setLoadingCollections] = useState(true);
   const [deleteCollectionId, setDeleteCollectionId] = useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [storeId, setStoreId] = useState<string>('');
   const { selectedOutlet } = useOutletContext();
   const supabase = useSupabaseClient();
   const { user } = useAuth();
@@ -105,6 +107,7 @@ const Dashboard = () => {
         
         // Store ID for all database queries to ensure RLS security
         const storeId = storeData.id;
+        setStoreId(storeId);
         
         // Fetch orders for the selected outlet or all store orders
         const { data: ordersData, error: ordersError } = await supabase
@@ -559,10 +562,11 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent className="p-3 sm:p-6">
               <Tabs defaultValue="analytics">
-                <TabsList className="grid grid-cols-3 mb-4 sm:mb-6">
+                <TabsList className="grid grid-cols-4 mb-4 sm:mb-6">
                   <TabsTrigger value="analytics">Analytics</TabsTrigger>
                   <TabsTrigger value="products">Products</TabsTrigger>
               <TabsTrigger value="collections">Collections</TabsTrigger>
+                  <TabsTrigger value="carts">Cart Tracking</TabsTrigger>
                 </TabsList>
                 <TabsContent value="analytics">
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-6">
@@ -690,6 +694,9 @@ const Dashboard = () => {
                   </div>
                 )}
                   </div>
+                </TabsContent>
+                <TabsContent value="carts">
+                  <CartAnalytics storeId={storeId} />
                 </TabsContent>
               </Tabs>
             </CardContent>

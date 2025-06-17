@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { CheckCircle, ShoppingBag, Loader2, ChevronLeft, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
+import ModernStoreHeader from "./ModernStoreHeader";
 import type { Database } from "@/integrations/supabase/types";
 
 type StoreSettings = Database['public']['Tables']['store_settings']['Row'];
@@ -120,33 +121,16 @@ const OrderConfirmationPage = ({ primaryColor, storeName, storeSettings: propSto
   
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Header */}
-      <header className="border-b" style={{ backgroundColor: primaryColor }}>
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <Link to={storePath} className="flex items-center">
-              <div className="h-8 w-8 bg-white rounded mr-2 flex items-center justify-center text-xs">
-                {storeName.substring(0, 2)}
-              </div>
-              <span className="font-medium text-white">{storeName}</span>
-            </Link>
-            <div className="flex items-center space-x-6">
-              <Link 
-                to={storePath} 
-                className="text-sm text-white hover:text-gray-200 transition-colors"
-              >
-                Shop Now
-              </Link>
-              <Link 
-                to={`${storePath}/collections`} 
-                className="text-sm text-white hover:text-gray-200 transition-colors"
-              >
-                Collections
-              </Link>
-            </div>
-          </div>
-        </div>
-      </header>
+        <ModernStoreHeader
+          storeName={storeSettings?.store_name || storeName}
+          primaryColor={primaryColor}
+          logoUrl={storeSettings?.logo_url}
+          storePath={storePath}
+          cartItemsCount={0}
+          onCartClick={() => {}}
+          collections={[]}
+          currentPage="home"
+        />
 
       {/* Order Confirmation Content */}
       <div className="flex-grow container mx-auto px-6 py-12">
@@ -176,16 +160,14 @@ const OrderConfirmationPage = ({ primaryColor, storeName, storeSettings: propSto
                   <p className="text-sm text-gray-500">Status</p>
                   <p className="font-medium">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      {order.order_status}
+                      {order.status}
                     </span>
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Payment</p>
+                  <p className="text-sm text-gray-500">Total</p>
                   <p className="font-medium">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      {order.payment_status}
-                    </span>
+                    KES {order.total_amount.toLocaleString()}
                   </p>
                 </div>
               </div>

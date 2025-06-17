@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import type { Database } from "@/integrations/supabase/types";
 import { useParams } from "react-router-dom";
+import { useCartSession } from "@/hooks/useCartSession";
+import { useAuth } from "@/contexts/AuthContext";
 
 type Product = Database['public']['Tables']['products']['Row'];
 
@@ -38,13 +40,27 @@ export const useCart = () => useContext(CartContext);
 // CartProvider component
 export const CartProvider = ({ children }: { children: ReactNode }) => {
   const { storeSlug } = useParams<{ storeSlug?: string }>();
+  const { user } = useAuth();
   
   // Get the appropriate cart key based on current store
   const getCartKey = () => {
-    return storeSlug ? `cart-${storeSlug}` : "cart";
+    return storeSlug ? `cart_${storeSlug}` : 'cart_default';
   };
   
-  // State for cart items, initialize from localStorage if available
+  // Get store ID for cart session tracking
+  const [storeId, setStoreId] = useState<string>('');
+  
+  // Initialize cart session hook
+  const {
+    saveCartSession,
+    markCartAsConverted,
+    clearCartSession,
+  } = useCartSession({
+    storeId,
+    userId: user?.id,
+  });
+
+  // Initialize cart items from localStorage
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
     if (typeof window !== "undefined") {
       const cartKey = getCartKey();
@@ -61,6 +77,31 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     return [];
   });
 
+  // Get store ID from store settings when storeSlug changes
+  useEffect(() => {
+    const fetchStoreId = async () => {
+      if (!storeSlug) return;
+      
+      try {
+        const { supabase } = await import('@/integrations/supabase/client');
+        const { data: storeData, error } = await supabase
+          .from('store_settings')
+          .select('id')
+          .eq('store_slug', storeSlug)
+          .single();
+          
+        if (error) throw error;
+        if (storeData) {
+          setStoreId(storeData.id);
+        }
+      } catch (error) {
+        console.error('Error fetching store ID:', error);
+      }
+    };
+
+    fetchStoreId();
+  }, [storeSlug]);
+
   // Save cart to localStorage whenever it changes
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -68,6 +109,35 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       localStorage.setItem(cartKey, JSON.stringify(cartItems));
     }
   }, [cartItems, storeSlug]);
+
+  // Save cart session to database whenever cart items change
+  useEffect(() => {
+    if (cartItems.length > 0 && storeId) {
+      // Debounce the save operation to avoid too many database calls
+      const timeoutId = setTimeout(() => {
+        const cartItemsForDB = cartItems.map(item => ({
+          product: {
+            id: item.product.id,
+            name: item.product.name,
+            price: item.product.price,
+            image_url: item.product.image_url,
+          },
+          quantity: item.quantity,
+        }));
+        
+        saveCartSession(cartItemsForDB);
+      }, 2000); // Increased to 2 seconds to reduce database load
+
+      return () => clearTimeout(timeoutId);
+    } else if (cartItems.length === 0 && storeId) {
+      // If cart is empty, clear the session after a short delay
+      const timeoutId = setTimeout(() => {
+        clearCartSession();
+      }, 5000); // 5 second delay before clearing empty cart
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [cartItems, storeId, saveCartSession, clearCartSession]);
 
   // Add a product to the cart
   const addToCart = (product: Product, quantity: number) => {
@@ -106,7 +176,10 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     setCartItems((prevItems) => {
       return prevItems.map((item) => {
         if (item.product.id === productId) {
-          return { ...item, quantity };
+          return {
+            ...item,
+            quantity,
+          };
         }
         return item;
       });
@@ -116,6 +189,17 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   // Clear the cart
   const clearCart = () => {
     setCartItems([]);
+    // Also clear the cart session from database
+    if (storeId) {
+      clearCartSession();
+    }
+  };
+
+  // Mark cart as converted to order
+  const markCartConverted = (orderId: string) => {
+    if (storeId) {
+      markCartAsConverted(orderId);
+    }
   };
 
   // Calculate the total price of items in the cart

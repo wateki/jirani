@@ -22,6 +22,7 @@ export default {
 				sans: ['Montserrat', 'sans-serif'],
 				heading: ['Montserrat', 'sans-serif'],
 				body: ['Montserrat', 'sans-serif'],
+				inter: ['Inter', 'sans-serif'],
 			},
 			colors: {
 				border: 'hsl(var(--border))',

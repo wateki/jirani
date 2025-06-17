@@ -18,11 +18,18 @@ import { Database } from "@/integrations/supabase/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import { ChevronLeft, CreditCard, CheckCircle, ShoppingCart } from "lucide-react";
+import { ChevronLeft, CheckCircle, ShoppingCart, Smartphone, MapPin, Loader2 } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
+import { useCartSession } from "@/hooks/useCartSession";
+import { useAuth } from "@/contexts/AuthContext";
+import { PaymentCheckout } from "@/components/payment/PaymentCheckout";
+import { LocationPicker } from "@/components/ui/location-picker";
+import ModernStoreHeader from "./ModernStoreHeader";
+import ModernCartSidebar from "./ModernCartSidebar";
 
 type Product = Database['public']['Tables']['products']['Row'];
 type StoreSettings = Database['public']['Tables']['store_settings']['Row'];
+type Collection = Database['public']['Tables']['categories']['Row'];
 
 interface CheckoutPageProps {
   primaryColor: string;
@@ -35,17 +42,24 @@ interface CartItem {
   quantity: number;
 }
 
-// Define checkout form schema
+interface LocationData {
+  latitude: number;
+  longitude: number;
+  address?: string;
+  city?: string;
+  county?: string;
+  postalCode?: string;
+}
+
+// Updated checkout form schema for Swypt mobile payments
 const checkoutFormSchema = z.object({
   fullName: z.string().min(2, "Full name is required"),
   email: z.string().email("Invalid email address"),
+  phoneNumber: z.string().min(10, "Valid phone number is required").regex(/^(\+254|254|0)[17]\d{8}$/, "Please enter a valid Kenyan phone number"),
   address: z.string().min(5, "Address is required"),
   city: z.string().min(2, "City is required"),
   state: z.string().min(2, "State is required"),
   zipCode: z.string().min(4, "Zip code is required"),
-  cardNumber: z.string().min(16, "Card number is required").max(16),
-  cardExpiry: z.string().min(5, "Card expiry date is required"),
-  cardCvv: z.string().min(3, "CVV is required").max(4),
 });
 
 type CheckoutFormValues = z.infer<typeof checkoutFormSchema>;
@@ -53,29 +67,40 @@ type CheckoutFormValues = z.infer<typeof checkoutFormSchema>;
 const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSettings }: CheckoutPageProps) => {
   const { storeSlug } = useParams<{ storeSlug: string }>();
   const { cartItems, clearCart, getCartTotal, getCartItemsCount } = useCart();
+  const { user } = useAuth();
   const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(propStoreSettings || null);
   const [loading, setLoading] = useState(!propStoreSettings);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
+  const [processingPayment, setProcessingPayment] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'processing' | 'success' | 'failed'>('idle');
+  const [currentOrder, setCurrentOrder] = useState<any>(null);
+  const [locationData, setLocationData] = useState<LocationData | null>(null);
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [isCartOpen, setIsCartOpen] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  // Initialize cart session hook for conversion tracking
+  const { markCartAsConverted } = useCartSession({
+    storeId: storeSettings?.id,
+    userId: user?.id,
+  });
 
   // Get the base store path for navigation
   const storePath = storeSlug ? `/store/${storeSlug}` : '';
 
-  // Initialize form
+  // Initialize form with updated schema
   const form = useForm<CheckoutFormValues>({
     resolver: zodResolver(checkoutFormSchema),
     defaultValues: {
       fullName: "",
       email: "",
+      phoneNumber: "",
       address: "",
       city: "",
       state: "",
       zipCode: "",
-      cardNumber: "",
-      cardExpiry: "",
-      cardCvv: "",
     },
   });
 
@@ -99,6 +124,17 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
         }
         
         setStoreSettings(storeData);
+
+        // Fetch collections for navigation
+        const { data: collectionsData, error: collectionsError } = await supabase
+          .from('categories')
+          .select('*')
+          .eq('store_id', storeData.id)
+          .order('name');
+        
+        if (!collectionsError && collectionsData) {
+          setCollections(collectionsData);
+        }
       } catch (error) {
         console.error('Error fetching store data:', error);
       } finally {
@@ -114,12 +150,33 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
     }
   }, [storeSlug, navigate, storePath, cartItems.length]);
 
+
+
+  // Handle location selection from the LocationPicker component
+  const handleLocationSelect = (location: LocationData) => {
+    setLocationData(location);
+    
+    // Auto-fill form fields if address data is available
+    if (location.address) {
+      form.setValue('address', location.address);
+    }
+    if (location.city) {
+      form.setValue('city', location.city);
+    }
+    if (location.county) {
+      form.setValue('state', location.county);
+    }
+    if (location.postalCode) {
+      form.setValue('zipCode', location.postalCode);
+    }
+  };
+
   const cartItemCount = getCartItemsCount();
   
   const subtotal = getCartTotal();
   
-  const shipping = 5.99;
-  const tax = subtotal * 0.08; // 8% tax
+  const shipping = 200; // KES 200 shipping
+  const tax = subtotal * 0.16; // 16% VAT (Kenya standard rate)
   const total = subtotal + shipping + tax;
 
   const onSubmit = async (data: CheckoutFormValues) => {
@@ -133,17 +190,25 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
     }
 
     setLoading(true);
+    setProcessingPayment(true);
+    setPaymentStatus('processing');
     
     try {
       // Generate a unique order number
       const orderNumber = `ORD-${Math.floor(Math.random() * 10000)}-${Date.now().toString().slice(-4)}`;
       
-      // Format the shipping address as JSON
+      // Format the shipping address as JSON with location data
       const shippingAddress = {
         address: data.address,
         city: data.city,
         state: data.state,
-        zipCode: data.zipCode
+        zipCode: data.zipCode,
+        ...(locationData && {
+          coordinates: {
+            latitude: locationData.latitude,
+            longitude: locationData.longitude,
+          }
+        })
       };
       
       // Create a new order
@@ -154,7 +219,7 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
           order_number: orderNumber,
           customer_name: data.fullName,
           customer_email: data.email,
-          customer_phone: '', // Required field
+          customer_phone: data.phoneNumber,
           shipping_address: shippingAddress,
           status: 'pending',
           total_amount: total,
@@ -181,41 +246,16 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
       
       if (itemsError) throw itemsError;
       
-      // Create a payment transaction
-      const { error: paymentError } = await supabase
-        .from('payments')
-        .insert({
-          order_id: orderData.id,
-          amount: total,
-          payment_method: 'credit_card',
-          status: 'completed'
-        });
+      setCurrentOrder(orderData);
       
-      if (paymentError) throw paymentError;
-      
-      // Clear cart
-      clearCart();
-      
-      // Set order success state
-      setOrderPlaced(true);
-      setOrderNumber(orderData.id);
-      
-      // Show success toast
-      toast({
-        title: "Order placed successfully!",
-        description: `Your order #${orderNumber} has been confirmed.`,
-        variant: "default",
-      });
-      
-      // Redirect to cart page after 2 seconds
-      setTimeout(() => {
-        navigate(`${storePath}/cart`);
-      }, 2000);
+      // Initiate payment directly using the phone number from the form
+      await initiatePayment(orderData, data.phoneNumber);
       
     } catch (error) {
-      console.error('Error placing order:', error);
+      console.error('Error creating order:', error);
+      setPaymentStatus('failed');
       toast({
-        title: "Error placing order",
+        title: "Error creating order",
         description: "Something went wrong. Please try again.",
         variant: "destructive",
       });
@@ -223,6 +263,159 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
       setLoading(false);
     }
   };
+
+  const initiatePayment = async (order: any, phoneNumber: string) => {
+    try {
+      // Call the payment processing function (this would be your Swypt integration)
+      const paymentResponse = await supabase.functions.invoke('process-payment', {
+        body: {
+          storeId: storeSettings?.id,
+          orderId: order.id,
+          amount: total,
+          currency: 'KES',
+          customerPhone: phoneNumber,
+          customerEmail: form.getValues('email'),
+          items: cartItems.map(item => ({
+            name: item.product.name,
+            quantity: item.quantity,
+            price: item.product.price
+          }))
+        }
+      });
+
+      if (paymentResponse.error) {
+        throw new Error(paymentResponse.error.message);
+      }
+
+      const { data: paymentData } = paymentResponse;
+
+      if (paymentData.success) {
+        setPaymentStatus('success');
+        
+        toast({
+          title: "Payment initiated!",
+          description: "Please check your phone for the M-Pesa payment prompt.",
+        });
+
+        // Start polling for payment status
+        pollPaymentStatus(paymentData.paymentId);
+      } else {
+        throw new Error(paymentData.error || 'Payment initiation failed');
+      }
+    } catch (error) {
+      console.error('Payment initiation error:', error);
+      setPaymentStatus('failed');
+      toast({
+        title: "Payment failed",
+        description: error instanceof Error ? error.message : "Could not initiate payment. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const pollPaymentStatus = async (paymentId: string) => {
+    const maxAttempts = 30; // Poll for 5 minutes (30 * 10 seconds)
+    let attempts = 0;
+
+    const checkStatus = async () => {
+      try {
+        const { data: payment, error } = await supabase
+          .from('payment_transactions')
+          .select('status, metadata')
+          .eq('id', paymentId)
+          .single();
+
+        if (error) throw error;
+
+        attempts++;
+
+        switch (payment.status) {
+          case 'completed':
+            setPaymentStatus('success');
+            handlePaymentSuccess();
+            return;
+          case 'failed':
+            setPaymentStatus('failed');
+            toast({
+              title: "Payment failed",
+              description: (payment.metadata as any)?.error_message || "Payment could not be completed.",
+              variant: "destructive",
+            });
+            return;
+          case 'stk_initiated':
+          case 'stk_success':
+          case 'crypto_processing':
+            // Continue polling
+            if (attempts < maxAttempts) {
+              setTimeout(checkStatus, 10000); // Check every 10 seconds
+            } else {
+              setPaymentStatus('failed');
+              toast({
+                title: "Payment timeout",
+                description: "Payment is taking longer than expected. Please contact support.",
+                variant: "destructive",
+              });
+            }
+            break;
+          default:
+            if (attempts < maxAttempts) {
+              setTimeout(checkStatus, 10000);
+            } else {
+              setPaymentStatus('failed');
+              toast({
+                title: "Payment timeout",
+                description: "Payment status unknown. Please contact support.",
+                variant: "destructive",
+              });
+            }
+        }
+      } catch (error) {
+        console.error('Error checking payment status:', error);
+        if (attempts < maxAttempts) {
+          setTimeout(checkStatus, 10000);
+        } else {
+          setPaymentStatus('failed');
+          toast({
+            title: "Payment error",
+            description: "Could not verify payment status. Please contact support.",
+            variant: "destructive",
+          });
+        }
+      }
+    };
+
+    // Start checking after 5 seconds
+    setTimeout(checkStatus, 5000);
+  };
+
+  const handlePaymentSuccess = () => {
+    // Clear cart
+    clearCart();
+    
+    // Mark cart as converted to order
+    if (currentOrder) {
+      markCartAsConverted(currentOrder.id);
+    }
+    
+    // Set order success state
+    setOrderPlaced(true);
+    setOrderNumber(currentOrder?.order_number || '');
+    setProcessingPayment(false);
+    
+    // Show success toast
+    toast({
+      title: "Payment successful!",
+      description: `Your order #${currentOrder?.order_number} has been confirmed.`,
+      variant: "default",
+    });
+    
+    // Redirect to store after 3 seconds
+    setTimeout(() => {
+      navigate(storePath);
+    }, 3000);
+  };
+
+
 
   if (orderPlaced) {
     return (
@@ -235,7 +428,7 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
             
             <h1 className="text-2xl font-bold mb-4">Thank You for Your Order!</h1>
             <p className="text-gray-600 mb-6">
-              Your order #{orderNumber} has been placed successfully.
+              Your order #{orderNumber} has been placed and paid successfully.
             </p>
             
             <p className="text-gray-600 mb-8">
@@ -254,32 +447,23 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
     );
   }
 
+
+
   return (
     <div className="min-h-screen bg-gray-50" style={{ 
       '--primary': storeSettings?.primary_color || '#4f46e5',
       '--secondary': storeSettings?.secondary_color || '#0f172a',
     } as React.CSSProperties}>
-      {/* Header */}
-      <header className="bg-white border-b">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center">
-            <Link 
-              to={storePath}
-              className="inline-flex items-center mr-4 text-sm text-gray-500 hover:text-gray-700"
-            >
-              <ChevronLeft className="h-4 w-4 mr-1" />
-              Back to Store
-            </Link>
-            
-            <div>
-              <h1 className="text-xl font-semibold">
-                {storeSettings?.store_name || 'Online Store'}
-              </h1>
-              <p className="text-sm text-gray-500">Checkout</p>
-            </div>
-          </div>
-        </div>
-      </header>
+      <ModernStoreHeader
+        storeName={storeSettings?.store_name || storeName}
+        primaryColor={primaryColor}
+        logoUrl={storeSettings?.logo_url}
+        storePath={storePath}
+        cartItemsCount={cartItemCount}
+        onCartClick={() => setIsCartOpen(true)}
+        collections={collections}
+        currentPage="home"
+      />
 
       <div className="container mx-auto px-4 py-8">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -295,7 +479,7 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
                       <p className="font-medium">{item.product.name}</p>
                       <p className="text-sm text-gray-500">Quantity: {item.quantity}</p>
                     </div>
-                    <p className="font-medium">${(item.product.price * item.quantity).toFixed(2)}</p>
+                    <p className="font-medium">KES {(item.product.price * item.quantity).toLocaleString()}</p>
                   </div>
                 ))}
               </div>
@@ -305,17 +489,17 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <p className="text-gray-600">Subtotal ({cartItemCount} items)</p>
-                  <p>${subtotal.toFixed(2)}</p>
+                  <p>KES {subtotal.toLocaleString()}</p>
                 </div>
                 
                 <div className="flex justify-between">
                   <p className="text-gray-600">Shipping</p>
-                  <p>${shipping.toFixed(2)}</p>
+                  <p>KES {shipping.toLocaleString()}</p>
                 </div>
                 
                 <div className="flex justify-between">
-                  <p className="text-gray-600">Tax</p>
-                  <p>${tax.toFixed(2)}</p>
+                  <p className="text-gray-600">VAT (16%)</p>
+                  <p>KES {tax.toLocaleString()}</p>
                 </div>
               </div>
               
@@ -323,7 +507,7 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
               
               <div className="flex justify-between font-bold">
                 <p>Total</p>
-                <p>${total.toFixed(2)}</p>
+                <p>KES {total.toLocaleString()}</p>
               </div>
             </div>
           </div>
@@ -331,7 +515,7 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
           {/* Checkout Form */}
           <div className="md:col-span-2 order-1 md:order-2">
             <div className="bg-white rounded-lg shadow-sm p-6">
-              <h2 className="text-lg font-semibold mb-6">Shipping Information</h2>
+              <h2 className="text-lg font-semibold mb-6">Shipping & Contact Information</h2>
               
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
@@ -367,6 +551,37 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
                   
                   <FormField
                     control={form.control}
+                    name="phoneNumber"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Phone Number</FormLabel>
+                        <FormControl>
+                          <div className="relative">
+                            <Smartphone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                            <Input 
+                              {...field} 
+                              type="tel" 
+                              placeholder="0712 345 678 or +254712345678"
+                              className="pl-10"
+                            />
+                          </div>
+                        </FormControl>
+                        <p className="text-xs text-gray-500">You'll receive an M-Pesa payment prompt on this number</p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  {/* Location Picker Section */}
+                  <div className="space-y-4">
+                    <LocationPicker
+                      onLocationSelect={handleLocationSelect}
+                      currentLocation={locationData}
+                    />
+                  </div>
+                  
+                  <FormField
+                    control={form.control}
                     name="address"
                     render={({ field }) => (
                       <FormItem>
@@ -387,7 +602,7 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
                         <FormItem>
                           <FormLabel>City</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="New York" />
+                            <Input {...field} placeholder="Nairobi" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -399,9 +614,9 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
                       name="state"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>State</FormLabel>
+                          <FormLabel>County</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="NY" />
+                            <Input {...field} placeholder="Nairobi" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -413,9 +628,9 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
                       name="zipCode"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Zip Code</FormLabel>
+                          <FormLabel>Postal Code</FormLabel>
                           <FormControl>
-                            <Input {...field} placeholder="10001" />
+                            <Input {...field} placeholder="00100" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -423,60 +638,44 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
                     />
                   </div>
                   
-                  <Separator />
-                  
-                  <h2 className="text-lg font-semibold">Payment Information</h2>
-                  
-                  <div className="space-y-4">
-                    <FormField
-                      control={form.control}
-                      name="cardNumber"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Card Number</FormLabel>
-                          <FormControl>
-                            <div className="relative">
-                              <Input 
-                                {...field} 
-                                placeholder="4242 4242 4242 4242" 
-                                maxLength={16}
-                              />
-                              <CreditCard className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                            </div>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="cardExpiry"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Expiry Date</FormLabel>
-                            <FormControl>
-                              <Input {...field} placeholder="MM/YY" />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      
-                      <FormField
-                        control={form.control}
-                        name="cardCvv"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>CVV</FormLabel>
-                            <FormControl>
-                              <Input {...field} placeholder="123" maxLength={4} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
+                  {/* Payment Status Indicator */}
+                  {paymentStatus === 'processing' && (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <div className="flex items-start">
+                        <Loader2 className="h-5 w-5 text-yellow-600 mt-0.5 mr-3 animate-spin" />
+                        <div>
+                          <h3 className="text-sm font-medium text-yellow-900">Payment in Progress</h3>
+                          <p className="text-sm text-yellow-700 mt-1">
+                            Please check your phone for the M-Pesa payment prompt and complete the payment.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {paymentStatus === 'failed' && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                      <div className="flex items-start">
+                        <div className="h-5 w-5 text-red-600 mt-0.5 mr-3">⚠️</div>
+                        <div>
+                          <h3 className="text-sm font-medium text-red-900">Payment Failed</h3>
+                          <p className="text-sm text-red-700 mt-1">
+                            There was an issue processing your payment. Please try again.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="flex items-start">
+                      <Smartphone className="h-5 w-5 text-blue-600 mt-0.5 mr-3" />
+                      <div>
+                        <h3 className="text-sm font-medium text-blue-900">M-Pesa Payment</h3>
+                        <p className="text-sm text-blue-700 mt-1">
+                          After clicking "Complete Order & Pay", you'll receive an M-Pesa STK push notification on your phone to complete the payment of KES {total.toLocaleString()}.
+                        </p>
+                      </div>
                     </div>
                   </div>
                   
@@ -484,15 +683,23 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
                     type="submit" 
                     className="w-full" 
                     style={{ backgroundColor: primaryColor }}
-                    disabled={loading}
+                    disabled={loading || processingPayment}
                   >
-                    {loading ? (
+                    {paymentStatus === 'processing' ? (
                       <div className="flex items-center">
                         <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2"></div>
-                        Processing...
+                        Processing Payment...
+                      </div>
+                    ) : loading ? (
+                      <div className="flex items-center">
+                        <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2"></div>
+                        Creating Order...
                       </div>
                     ) : (
-                      `Pay $${total.toFixed(2)}`
+                      <>
+                        <Smartphone className="h-4 w-4 mr-2" />
+                        Complete Order & Pay
+                      </>
                     )}
                   </Button>
                   
@@ -505,6 +712,14 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
           </div>
         </div>
       </div>
+      
+      {/* Cart Sidebar */}
+      <ModernCartSidebar
+        isOpen={isCartOpen}
+        onClose={() => setIsCartOpen(false)}
+        primaryColor={primaryColor}
+        storePath={storePath}
+      />
     </div>
   );
 };

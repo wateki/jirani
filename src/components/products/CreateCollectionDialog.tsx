@@ -99,7 +99,8 @@ export function CreateCollectionDialog({
   const uploadImageToStorage = async (file: File) => {
     setUploadingImage(true);
     try {
-      const result = await uploadCollectionImage(file, user?.id);
+      // Upload with compression and show stats in console
+      const result = await uploadCollectionImage(file, user?.id, true);
       if (!result) {
         throw new Error("Failed to upload image");
       }
