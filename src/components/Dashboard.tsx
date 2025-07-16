@@ -109,23 +109,38 @@ const Dashboard = () => {
         const storeId = storeData.id;
         setStoreId(storeId);
         
-        // Fetch orders for the selected outlet or all store orders
-        const { data: ordersData, error: ordersError } = await supabase
+        console.log('Dashboard Debug - Store ID:', storeId, 'Selected Outlet:', selectedOutlet?.id);
+        
+        // Build orders query - apply outlet filter only if outlet is selected
+        let ordersQuery = supabase
           .from('orders')
-          .select('*, payments(*), customer:customer_id(*)')
-          .eq('store_id', storeId) // Always filter by store_id first for RLS
-          .eq(selectedOutlet ? 'outlet_id' : 'id', selectedOutlet ? selectedOutlet.id : storeData.id)
+          .select('*, customer:customer_id(*)')
+          .eq('store_id', storeId); // Always filter by store_id first for RLS
+        
+        // Only add outlet filter if an outlet is specifically selected
+        if (selectedOutlet) {
+          ordersQuery = ordersQuery.eq('outlet_id', selectedOutlet.id);
+          console.log('Dashboard Debug - Filtering by outlet:', selectedOutlet.id);
+        }
+        
+        const { data: ordersData, error: ordersError } = await ordersQuery
           .order('created_at', { ascending: false });
 
-        if (ordersError) throw ordersError;
+        if (ordersError) {
+          console.error('Dashboard Debug - Orders query error:', ordersError);
+          throw ordersError;
+        }
+        
+        console.log('Dashboard Debug - Orders data:', ordersData?.length, 'orders found');
 
-        // Calculate stats
+        // Calculate revenue from orders.total_amount instead of payments table
         const totalRevenue = ordersData?.reduce((sum, order) => {
-          const payments = order.payments || [];
-          return sum + payments.reduce((pSum, p) => pSum + (p.amount || 0), 0);
+          return sum + (order.total_amount || 0);
         }, 0) || 0;
+        
+        console.log('Dashboard Debug - Total revenue calculated:', totalRevenue);
 
-        const uniqueCustomers = new Set(ordersData?.map(order => order.customer_id) || []);
+        const uniqueCustomers = new Set(ordersData?.map(order => order.customer_id).filter(Boolean) || []);
 
         // Get low stock items - secured by store_id filter
         const { data: lowStockItems, error: lowStockError } = await supabase
@@ -136,7 +151,7 @@ const Dashboard = () => {
           
         if (lowStockError) throw lowStockError;
 
-        setStats({
+        const calculatedStats = {
           totalRevenue,
           orderCount: ordersData?.length || 0,
           customerCount: uniqueCustomers.size,
@@ -144,7 +159,10 @@ const Dashboard = () => {
           pendingOrders: ordersData?.filter(o => o.status === 'pending').length || 0,
           lowStockItems: lowStockItems?.length || 0,
           recentOrders: ordersData?.slice(0, 5) || []
-        });
+        };
+        
+        console.log('Dashboard Debug - Final stats:', calculatedStats);
+        setStats(calculatedStats);
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
         
@@ -214,6 +232,13 @@ const Dashboard = () => {
     fetchCollections();
   }, [supabase]);
   
+  // Function to calculate period-over-period change with real data
+  const [previousPeriodStats, setPreviousPeriodStats] = useState({
+    totalRevenue: 0,
+    orderCount: 0,
+    customerCount: 0
+  });
+
   // Function to fetch real-time analytics data
   const [analyticsData, setAnalyticsData] = useState({
     salesGrowth: 0,
@@ -226,7 +251,7 @@ const Dashboard = () => {
     avgRating: 0
   });
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
-  
+
   useEffect(() => {
     const fetchAnalyticsData = async () => {
       setAnalyticsLoading(true);
@@ -259,32 +284,60 @@ const Dashboard = () => {
           
         if (productsError) throw productsError;
         
-        // Fetch top selling product - secured by store_id for RLS
-        // For now, just get a random product
-        const { data: topProduct, error: topProductError } = await supabase
+        // Fetch top selling product - use a simpler approach for now
+        const { data: firstProduct, error: topProductError } = await supabase
           .from('products')
           .select('name')
-          .eq('store_id', storeId) // Critical for RLS security
+          .eq('store_id', storeId)
           .limit(1);
           
-        if (topProductError) throw topProductError;
+        const topProductName = firstProduct?.length > 0 ? firstProduct[0].name : "No products yet";
         
-        // Calculate sales growth and customer growth based on user's store data
-        // We'd ideally use a store-specific function or filtered query here
-        // For demo we'll calculate random growth
-        const salesGrowth = (Math.random() * 30).toFixed(1);
-        const customerGrowth = (Math.random() * 40).toFixed(1);
-        const avgFulfillmentTime = (Math.random() * 2 + 0.5).toFixed(1);
+        // Calculate real analytics metrics
+        const currentRevenue = stats.totalRevenue;
+        const previousRevenue = previousPeriodStats.totalRevenue;
+        const salesGrowth = previousRevenue > 0 
+          ? ((currentRevenue - previousRevenue) / previousRevenue * 100)
+          : (currentRevenue > 0 ? 100 : 0);
+        
+        const currentCustomers = stats.customerCount;
+        const previousCustomers = previousPeriodStats.customerCount;
+        const customerGrowth = previousCustomers > 0 
+          ? ((currentCustomers - previousCustomers) / previousCustomers * 100)
+          : (currentCustomers > 0 ? 100 : 0);
+        
+        // Calculate average fulfillment time from completed orders
+        const { data: completedOrders, error: completedOrdersError } = await supabase
+          .from('orders')
+          .select('created_at, updated_at, status')
+          .eq('store_id', storeId)
+          .in('status', ['delivered', 'completed'])
+          .limit(50); // Last 50 completed orders for average
+        
+        let avgFulfillmentTime = 2.5; // Default fallback
+        if (!completedOrdersError && completedOrders?.length > 0) {
+          const fulfillmentTimes = completedOrders
+            .filter(order => order.updated_at && order.created_at)
+            .map(order => {
+              const created = new Date(order.created_at);
+              const updated = new Date(order.updated_at);
+              return (updated.getTime() - created.getTime()) / (1000 * 60 * 60 * 24); // Days
+            });
+          
+          if (fulfillmentTimes.length > 0) {
+            avgFulfillmentTime = fulfillmentTimes.reduce((sum, time) => sum + time, 0) / fulfillmentTimes.length;
+          }
+        }
         
         setAnalyticsData({
-          salesGrowth: parseFloat(salesGrowth),
-          customerGrowth: parseFloat(customerGrowth),
-          avgFulfillmentTime: parseFloat(avgFulfillmentTime)
+          salesGrowth: Math.max(0, salesGrowth), // Ensure non-negative
+          customerGrowth: Math.max(0, customerGrowth), // Ensure non-negative
+          avgFulfillmentTime: parseFloat(avgFulfillmentTime.toFixed(1))
         });
         
         setProductsData({
           totalProducts: productsCount || 0,
-          topSelling: topProduct?.length > 0 ? topProduct[0].name : "No products yet",
+          topSelling: topProductName,
           avgRating: 4.5 // Placeholder - would need actual reviews
         });
       } catch (error) {
@@ -295,26 +348,87 @@ const Dashboard = () => {
       }
     };
     
-    fetchAnalyticsData();
-  }, [supabase]);
-  
-  // Function to calculate period-over-period change (mock for now)
-  const calculateChange = (metric: string): { value: string, trend: 'up' | 'down' | 'neutral' } => {
-    // In a real app, this would calculate actual change based on historical data
-    const randomChange = (Math.random() * 20 - 5).toFixed(1);
-    const changeValue = parseFloat(randomChange);
-    
+    // Only fetch analytics after we have main stats and previous period stats
+    if (storeId && !isLoading) {
+      fetchAnalyticsData();
+    }
+  }, [storeId, isLoading, stats.totalRevenue, stats.customerCount, previousPeriodStats, supabase]);
+
+  useEffect(() => {
+    const fetchPreviousPeriodData = async () => {
+      try {
+        if (!storeId) return;
+
+        // Calculate date ranges (current 30 days vs previous 30 days)
+        const now = new Date();
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+
+        // Fetch previous period orders (31-60 days ago)
+        let previousOrdersQuery = supabase
+          .from('orders')
+          .select('*, customer:customer_id(*)')
+          .eq('store_id', storeId)
+          .gte('created_at', sixtyDaysAgo.toISOString())
+          .lt('created_at', thirtyDaysAgo.toISOString());
+
+        if (selectedOutlet) {
+          previousOrdersQuery = previousOrdersQuery.eq('outlet_id', selectedOutlet.id);
+        }
+
+        const { data: previousOrdersData, error: previousOrdersError } = await previousOrdersQuery;
+
+        if (previousOrdersError) {
+          console.error('Error fetching previous period data:', previousOrdersError);
+          return;
+        }
+
+        const previousRevenue = previousOrdersData?.reduce((sum, order) => {
+          return sum + (order.total_amount || 0);
+        }, 0) || 0;
+
+        const previousCustomers = new Set(
+          previousOrdersData?.map(order => order.customer_id).filter(Boolean) || []
+        );
+
+        setPreviousPeriodStats({
+          totalRevenue: previousRevenue,
+          orderCount: previousOrdersData?.length || 0,
+          customerCount: previousCustomers.size
+        });
+
+      } catch (error) {
+        console.error('Error fetching previous period data:', error);
+      }
+    };
+
+    if (storeId) {
+      fetchPreviousPeriodData();
+    }
+  }, [storeId, selectedOutlet, supabase]);
+
+  // Function to calculate period-over-period change with real data
+  const calculateChange = (currentValue: number, previousValue: number): { value: string, trend: 'up' | 'down' | 'neutral' } => {
+    if (previousValue === 0) {
+      return currentValue > 0 
+        ? { value: '+100%', trend: 'up' }
+        : { value: '0%', trend: 'neutral' };
+    }
+
+    const percentChange = ((currentValue - previousValue) / previousValue) * 100;
+    const formattedChange = Math.abs(percentChange).toFixed(1);
+
     return {
-      value: `${changeValue > 0 ? '+' : ''}${changeValue}%`,
-      trend: changeValue > 0 ? 'up' : (changeValue < 0 ? 'down' : 'neutral')
+      value: `${percentChange >= 0 ? '+' : '-'}${formattedChange}%`,
+      trend: percentChange > 0 ? 'up' : (percentChange < 0 ? 'down' : 'neutral')
     };
   };
-  
-  // Get real changes for stats cards
-  const revenueChange = calculateChange('revenue');
-  const ordersChange = calculateChange('orders');
-  const customersChange = calculateChange('customers');
-  const aovChange = calculateChange('aov');
+
+  // Get real changes for stats cards based on actual data
+  const revenueChange = calculateChange(stats.totalRevenue, previousPeriodStats.totalRevenue);
+  const ordersChange = calculateChange(stats.orderCount, previousPeriodStats.orderCount);
+  const customersChange = calculateChange(stats.customerCount, previousPeriodStats.customerCount);
+  const aovChange = calculateChange(stats.avgOrderValue, previousPeriodStats.orderCount > 0 ? previousPeriodStats.totalRevenue / previousPeriodStats.orderCount : 0);
 
   const handleDeleteCollection = async () => {
     if (!deleteCollectionId) return;

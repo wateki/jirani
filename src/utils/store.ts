@@ -59,7 +59,9 @@ export async function createStoreWithTemplate(
         .single();
       
       if (!templateError && template) {
-        templateConfig = template.template_config;
+        templateConfig = typeof template.template_config === "string"
+          ? JSON.parse(template.template_config)
+          : template.template_config;
       }
     }
     

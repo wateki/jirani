@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { createStore, createStoreWithTemplate, completeEnhancedRegistration } from "@/utils/store";
 import { BusinessType, StoreTemplate } from "@/types/database";
+import { log } from "console";
 
 interface EnhancedRegistrationData {
   name: string;
@@ -174,6 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         
         if (!result.success) {
+          
           throw new Error("Failed to create store with template");
         }
       }

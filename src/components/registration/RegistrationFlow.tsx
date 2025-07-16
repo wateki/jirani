@@ -66,7 +66,14 @@ const RegistrationFlow = () => {
         .order('name');
 
       if (templatesError) throw templatesError;
-      setTemplates(templatesData || []);
+      setTemplates(
+        (templatesData || []).map(t => ({
+          ...t,
+          template_config: typeof t.template_config === "string"
+            ? JSON.parse(t.template_config)
+            : t.template_config
+        }))
+      );
     } catch (error) {
       console.error('Error fetching business types and templates:', error);
     }
@@ -169,18 +176,17 @@ const RegistrationFlow = () => {
       case 2:
         return (
           <BusinessTypeStep
+            data={registrationData}
+            onDataChange={handleStepData}
             businessTypes={businessTypes}
-            selectedType={registrationData.businessType}
-            onTypeSelect={(type) => handleStepData({ businessType: type })}
           />
         );
       case 3:
         return (
           <TemplateSelectionStep
+            data={registrationData}
+            onDataChange={handleStepData}
             templates={templates.filter(t => t.business_type_id === registrationData.businessType?.id)}
-            selectedTemplate={registrationData.template}
-            onTemplateSelect={(template) => handleStepData({ template })}
-            businessType={registrationData.businessType}
           />
         );
       case 4:
@@ -194,7 +200,7 @@ const RegistrationFlow = () => {
         return (
           <ReviewAndConfirmStep
             data={registrationData}
-            onComplete={handleCompleteRegistration}
+            onConfirm={handleCompleteRegistration}
             isLoading={isLoading}
           />
         );

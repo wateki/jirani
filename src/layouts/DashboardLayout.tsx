@@ -66,10 +66,19 @@ const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
                 <SidebarMenuButton asChild tooltip="Home">
                   <Link to="/dashboard">
                     <Home className="h-4 w-4" />
-                    <span>Home</span>
+                    <span>Overview</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip="Customize Store">
+                    <Link to="/dashboard/customize">
+                      <Settings className="h-4 w-4" />
+                      <span>Customize Store</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
 
               <SidebarMenuItem>
                 <SidebarMenuButton tooltip="My Products">
@@ -133,14 +142,7 @@ const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
             <SidebarGroup>
               <SidebarGroupLabel>Personalization</SidebarGroupLabel>
               <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild tooltip="Customize Store">
-                    <Link to="/dashboard/customize">
-                      <Settings className="h-4 w-4" />
-                      <span>Customize Store</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild tooltip="Account Settings">
                     <Link to="/dashboard/account">
