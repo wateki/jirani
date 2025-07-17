@@ -348,7 +348,7 @@ const SignupPage = () => {
                   </Link>
                 </div>
                 
-                <div className="space-y-4 w-full">
+               {/*  <div className="space-y-4 w-full">
                   <div className="relative">
                     <div className="absolute inset-0 flex items-center">
                       <span className="w-full border-t" />
@@ -372,7 +372,7 @@ const SignupPage = () => {
                       Apple
                     </Button>
                   </div>
-                </div>
+                </div> */}
               </>
             )}
           </CardFooter>

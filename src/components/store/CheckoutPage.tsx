@@ -175,7 +175,7 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
   
   const subtotal = getCartTotal();
   
-  const shipping = 200; // KES 200 shipping
+  const shipping = 1; // KES 200 shipping
   const tax = subtotal * 0.16; // 16% VAT (Kenya standard rate)
   const total = subtotal + shipping + tax;
 
@@ -284,6 +284,7 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
       });
 
       if (paymentResponse.error) {
+        console.log(paymentResponse.error);
         throw new Error(paymentResponse.error.message);
       }
 

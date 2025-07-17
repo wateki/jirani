@@ -118,7 +118,7 @@ const LoginPage = () => {
               </Link>
             </div>
             
-            <div className="relative">
+          {/*   <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <span className="w-full border-t" />
               </div>
@@ -148,7 +148,7 @@ const LoginPage = () => {
                 </svg>
                 Apple
               </Button>
-            </div>
+            </div> */}
           </CardFooter>
         </Card>
       </div>
