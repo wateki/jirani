@@ -228,7 +228,10 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
         .select()
         .single();
       
-      if (orderError) throw orderError;
+      if (orderError) {
+        console.error('Error creating order:', orderError);
+        throw orderError;
+      }
       
       // Add order items
       const orderItems = cartItems.map(item => ({
