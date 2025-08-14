@@ -18,7 +18,7 @@ serve(async (req) => {
 
   try {
     // Get the authorization header
-    const authHeader = req.headers.get('Authorization')
+   /*  const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       throw new Error('Missing authorization header')
     }
@@ -30,7 +30,7 @@ serve(async (req) => {
     if (authError || !user) {
       throw new Error('Invalid authorization')
     }
-
+ */
     // Parse request body
     const {
       storeId,
@@ -40,20 +40,19 @@ serve(async (req) => {
       customerPhone,
       customerEmail,
       orderId
-    } = await req.json()
+    } = body;
 
-    console.log('Initiating payment:', { storeId, amount, currency, customerPhone, orderId })
+    console.log('Initiating payment:', { storeId, amount, currency, customerPhone, orderId });
 
-    // Verify store ownership
+    // Verify store exists (no longer require user authentication)
     const { data: store, error: storeError } = await supabase
       .from('stores')
       .select('id, user_id')
       .eq('id', storeId)
-      .eq('user_id', user.id)
       .single()
 
     if (storeError || !store) {
-      throw new Error('Store not found or access denied')
+      throw new Error('Store not found')
     }
 
     // Get optimal platform wallet
@@ -119,7 +118,7 @@ serve(async (req) => {
         metadata: {
           quote,
           wallet_used: wallet.wallet_address,
-          user_initiated: user.id,
+          user_initiated: null, // No longer user_initiated
         },
       })
       .select()
