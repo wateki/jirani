@@ -1,215 +1,355 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.7';
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
+
+
+const supabaseUrl = Deno.env.get("SUPABASE_URL");
+const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const flutterwaveBaseUrl = Deno.env.get("FLUTTERWAVE_BASE_URL") || "https://api.flutterwave.cloud/developersandbox";
+const flutterwaveClientId = Deno.env.get("FLUTTERWAVE_CLIENT_ID");
+const flutterwaveClientSecret = Deno.env.get("FLUTTERWAVE_CLIENT_SECRET");
+
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE'
-};
-const supabaseUrl = Deno.env.get('SUPABASE_URL');
-const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-const swyptApiKey = Deno.env.get('SWYPT_API_KEY');
-const swyptApiSecret = Deno.env.get('SWYPT_API_SECRET');
-const swyptEnvironment = Deno.env.get('SWYPT_ENVIRONMENT') || 'staging';
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
-Deno.serve(async (req)=>{
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', {
-      headers: corsHeaders
-    });
-  }
-  try {
-    // Log incoming request for debugging
-    const body = await req.clone().json().catch(() => ({}));
-    console.log('Incoming process-payment request:', { body });
+  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
+} 
 
-    // Parse request body - matching CheckoutPage parameters
-    const { storeId, orderId, amount, currency, customerPhone, customerEmail, items } = body;
-    console.log('Processing payment:', {
+// Flutterwave service class for edge function
+class FlutterwaveEdgeService {
+  private accessToken: string | null = null;
+  private tokenExpiry: number = 0;
+
+  /**
+   * Get OAuth access token
+   */
+  private async getAccessToken(): Promise<string> {
+    if (this.accessToken && Date.now() < this.tokenExpiry) {
+      return this.accessToken;
+    }
+
+    const response = await fetch(`${flutterwaveBaseUrl}/oauth/token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        client_id: flutterwaveClientId,
+        client_secret: flutterwaveClientSecret,
+        grant_type: "client_credentials",
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get access token: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    this.accessToken = data.access_token;
+    this.tokenExpiry = Date.now() + (data.expires_in * 1000) - 60000; // 1 minute buffer
+    return this.accessToken;
+  }
+
+  /**
+   * Generate unique trace ID
+   */
+  private generateTraceId(): string {
+    return crypto.randomUUID();
+  }
+
+  /**
+   * Generate unique idempotency key
+   */
+  private generateIdempotencyKey(): string {
+    return crypto.randomUUID();
+  }
+
+  /**
+   * Create customer in Flutterwave
+   */
+  async createCustomer(email: string, phone: string, name?: string): Promise<string> {
+    const token = await this.getAccessToken();
+    const traceId = this.generateTraceId();
+    const idempotencyKey = this.generateIdempotencyKey();
+
+    const customerData = {
+      email,
+      phone: {
+        country_code: "233", // Ghana
+        number: phone.replace(/^\+233/, "").replace(/^233/, ""),
+      },
+      ...(name && {
+        name: {
+          first: name.split(" ")[0] || "Customer",
+          last: name.split(" ").slice(1).join(" ") || "User",
+        },
+      }),
+    };
+
+    const response = await fetch(`${flutterwaveBaseUrl}/customers`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "X-Trace-Id": traceId,
+        "X-Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify(customerData),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to create customer: ${response.statusText} - ${error}`);
+    }
+
+    const customer = await response.json();
+    return customer.id;
+  }
+
+  /**
+   * Create mobile money payment method
+   */
+  async createPaymentMethod(customerId: string, phone: string, network: string = "MTN"): Promise<string> {
+    const token = await this.getAccessToken();
+    const traceId = this.generateTraceId();
+    const idempotencyKey = this.generateIdempotencyKey();
+
+    const paymentMethodData = {
+      type: "mobile_money",
+      mobile_money: {
+        country_code: "233",
+        network,
+        phone_number: phone.replace(/^\+233/, "").replace(/^233/, ""),
+      },
+    };
+
+    const response = await fetch(`${flutterwaveBaseUrl}/payment-methods`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "X-Trace-Id": traceId,
+        "X-Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify(paymentMethodData),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to create payment method: ${response.statusText} - ${error}`);
+    }
+
+    const paymentMethod = await response.json();
+    return paymentMethod.id;
+  }
+
+  /**
+   * Create charge for payment
+   */
+  async createCharge(customerId: string, paymentMethodId: string, amount: number, reference: string): Promise<any> {
+    const token = await this.getAccessToken();
+    const traceId = this.generateTraceId();
+    const idempotencyKey = this.generateIdempotencyKey();
+
+    const chargeData = {
+      amount,
+      currency: "GHS",
+      customer_id: customerId,
+      payment_method_id: paymentMethodId,
+      reference,
+      description: "Payment for order",
+    };
+
+    const response = await fetch(`${flutterwaveBaseUrl}/charges`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "X-Trace-Id": traceId,
+        "X-Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify(chargeData),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to create charge: ${response.statusText} - ${error}`);
+    }
+
+    return await response.json();
+  }
+}
+
+Deno.serve(async (req: Request) => {
+  // Handle CORS
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    // Only allow POST requests
+    if (req.method !== "POST") {
+      return new Response(
+        JSON.stringify({ error: "Method not allowed" }),
+        { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const body = await req.json();
+    const {
       storeId,
       orderId,
       amount,
-      currency,
-      customerPhone
-    });
-    // Verify order exists (no longer require user authentication)
-    const { data: order, error: orderError } = await supabase.from('orders').select('*').eq('id', orderId).single();
-    if (orderError || !order) {
-      throw new Error('Order not found');
+      customerEmail,
+      customerPhone,
+      customerName,
+      paymentMethodNetwork = "MTN",
+      paymentMethodCountryCode = "233",
+    } = body;
+
+    // Validate required fields
+    if (!storeId || !amount || !customerEmail || !customerPhone) {
+      return new Response(
+        JSON.stringify({ 
+          error: "Missing required fields: storeId, amount, customerEmail, customerPhone" 
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
-    // Get optimal platform wallet
-    const { data: wallet, error: walletError } = await supabase.rpc('get_optimal_platform_wallet', {
-      p_network: 'celo',
-      p_currency: 'cUSD'
-    }).single();
-    if (walletError || !wallet) {
-      throw new Error('No available platform wallet found');
-    }
-    console.log('Using wallet:', wallet.wallet_address);
-    // Check if Swypt credentials are available
-    if (!swyptApiKey || !swyptApiSecret) {
-      console.log('Swypt credentials not configured, creating mock payment transaction');
-      // Create a mock payment transaction for testing
-      const { data: paymentTransaction, error: insertError } = await supabase.from('payment_transactions').insert({
-        order_id: orderId,
-        customer_phone: customerPhone,
-        customer_email: customerEmail,
-        amount_fiat: amount,
-        fiat_currency: currency || 'KES',
-        amount_crypto: amount * 0.0027,
-        crypto_currency: 'cUSD',
-        exchange_rate: 0.0027,
-        platform_wallet_id: wallet.id,
-        status: 'stk_initiated',
-        metadata: {
-          mock_payment: true,
-          wallet_used: wallet.wallet_address,
-          user_initiated: null, // No longer user_initiated
-          store_settings_id: storeId,
-          items: items,
-          note: 'Mock payment - Swypt credentials not configured'
+
+    // Initialize Flutterwave service
+    const flutterwaveService = new FlutterwaveEdgeService();
+
+    // Generate unique reference
+    const paymentReference = crypto.randomUUID();
+
+    try {
+      // Step 1: Create customer in Flutterwave
+      console.log("Creating customer in Flutterwave...");
+      const flwCustomerId = await flutterwaveService.createCustomer(
+        customerEmail,
+        customerPhone,
+        customerName
+      );
+
+      // Step 2: Create payment method
+      console.log("Creating payment method...");
+      const flwPaymentMethodId = await flutterwaveService.createPaymentMethod(
+        flwCustomerId,
+        customerPhone,
+        paymentMethodNetwork
+      );
+
+      // Step 3: Create charge
+      console.log("Creating charge...");
+      const charge = await flutterwaveService.createCharge(
+        flwCustomerId,
+        flwPaymentMethodId,
+        amount,
+        paymentReference
+      );
+
+      // Step 4: Save transaction to database
+      console.log("Saving transaction to database...");
+      const { data: transaction, error: dbError } = await supabase
+        .from("payment_transactions")
+        .insert({
+          store_id: storeId,
+          order_id: orderId,
+          amount,
+          currency: "GHS",
+          payment_reference: paymentReference,
+          payment_method_type: "mobile_money",
+          payment_method_network: paymentMethodNetwork,
+          payment_method_country_code: paymentMethodCountryCode,
+          customer_phone: customerPhone,
+          customer_email: customerEmail,
+          customer_name: customerName,
+          flw_customer_id: flwCustomerId,
+          flw_payment_method_id: flwPaymentMethodId,
+          flw_charge_id: charge.id,
+          status: "pending",
+          metadata: {
+            charge_data: charge,
+            created_at: new Date().toISOString(),
+            payment_flow: "flutterwave_mobile_money",
+          },
+        })
+        .select()
+        .single();
+
+      if (dbError) {
+        console.error("Database error:", dbError);
+        throw new Error(`Failed to save transaction: ${dbError.message}`);
+      }
+
+      console.log("Payment initiated successfully");
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          transaction_id: transaction.id,
+          payment_reference: paymentReference,
+          flw_charge_id: charge.id,
+          status: "pending",
+          message: "Mobile money payment initiated. Check your phone for payment prompt.",
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
         }
-      }).select().single();
-      if (insertError || !paymentTransaction) {
-        console.error('Failed to create payment transaction:', insertError);
-        throw new Error('Failed to create payment transaction record');
+      );
+
+    } catch (error) {
+      console.error("Payment initiation error:", error);
+
+      // Save failed transaction for tracking
+      try {
+        await supabase
+          .from("payment_transactions")
+          .insert({
+            store_id: storeId,
+            order_id: orderId,
+            amount,
+            currency: "GHS",
+            payment_reference: paymentReference,
+            payment_method_type: "mobile_money",
+            payment_method_network: paymentMethodNetwork,
+            payment_method_country_code: paymentMethodCountryCode,
+            customer_phone: customerPhone,
+            customer_email: customerEmail,
+            customer_name: customerName,
+            status: "failed",
+            metadata: {
+              error: error.message,
+              error_details: error,
+              created_at: new Date().toISOString(),
+              payment_flow: "flutterwave_mobile_money",
+            },
+          });
+      } catch (saveError) {
+        console.error("Failed to save error transaction:", saveError);
       }
-      console.log('Created mock payment transaction:', paymentTransaction.id);
-      // Return mock success response
-      return new Response(JSON.stringify({
-        success: true,
-        paymentId: paymentTransaction.id,
-        transactionId: `MOCK-${Date.now()}`,
-        message: 'Mock STK Push initiated (Swypt not configured). Check payment_transactions table.',
-        mock: true
-      }), {
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        },
-        status: 200
-      });
-    }
-    // Real Swypt integration (when credentials are available)
-    const swyptBaseUrl = swyptEnvironment === 'production' ? 'https://pool.swypt.io/api' : 'https://staging-pool.swypt.io/api';
-    const quoteResponse = await fetch(`${swyptBaseUrl}/swypt-quotes`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': swyptApiKey,
-        'x-api-secret': swyptApiSecret
-      },
-      body: JSON.stringify({
-        type: 'onramp',
-        amount: amount.toString(),
-        fiatCurrency: currency || 'KES',
-        cryptoCurrency: 'cUSD',
-        network: 'celo'
-      })
-    });
-    if (!quoteResponse.ok) {
-      const quoteError = await quoteResponse.text();
-      console.error('Quote request failed:', quoteError);
-      throw new Error('Failed to get payment quote');
-    }
-    const quote = await quoteResponse.json();
-    console.log('Received quote:', quote);
-    // Find the corresponding store in stores table for payment_transactions
-    const { data: storeSettings, error: storeSettingsError } = await supabase.from('store_settings').select('user_id').eq('id', storeId).single();
-    if (storeSettingsError || !storeSettings) {
-      throw new Error('Store not found or access denied');
-    }
-    // Create payment transaction record
-    const { data: paymentTransaction, error: insertError } = await supabase.from('payment_transactions').insert({
-      order_id: orderId,
-      customer_phone: customerPhone,
-      customer_email: customerEmail,
-      amount_fiat: amount,
-      fiat_currency: currency || 'KES',
-      amount_crypto: parseFloat(quote.cryptoAmount || quote.amount_crypto || '0'),
-      crypto_currency: 'cUSD',
-      exchange_rate: parseFloat(quote.exchangeRate || quote.rate || '1'),
-      platform_wallet_id: wallet.id,
-      swypt_quote_id: quote.id || quote.quoteId,
-      status: 'quote_requested',
-      metadata: {
-        quote,
-        wallet_used: wallet.wallet_address,
-        user_initiated: null, // No longer user_initiated
-        store_settings_id: storeId,
-        items: items
-      }
-    }).select().single();
-    if (insertError || !paymentTransaction) {
-      console.error('Failed to create payment transaction:', insertError);
-      throw new Error('Failed to create payment transaction record');
-    }
-    console.log('Created payment transaction:', paymentTransaction.id);
-    // Initiate Swypt onramp (STK Push)
-    const onrampResponse = await fetch(`${swyptBaseUrl}/swypt-onramp`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': swyptApiKey,
-        'x-api-secret': swyptApiSecret
-      },
-      body: JSON.stringify({
-        partyA: customerPhone,
-        amount: amount.toString(),
-        side: 'onramp',
-        userAddress: wallet.wallet_address,
-        tokenAddress: wallet.token_address,
-        network: wallet.network,
-        quoteld: quote.id || quote.quoteId
-      })
-    });
-    const onrampResult = await onrampResponse.json();
-    console.log('Onramp result:', onrampResult);
-    if (!onrampResponse.ok) {
-      // Update payment transaction as failed
-      await supabase.from('payment_transactions').update({
-        status: 'failed',
-        error_message: onrampResult.message || 'Failed to initiate STK push',
-        metadata: {
-          ...paymentTransaction.metadata,
-          error: onrampResult.message || 'Failed to initiate STK push'
+
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: error.message,
+          payment_reference: paymentReference,
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, "Content-Type": "application/json" } 
         }
-      }).eq('id', paymentTransaction.id);
-      throw new Error(onrampResult.message || 'Failed to initiate payment');
+      );
     }
-    // Update payment transaction with Swypt order ID
-    await supabase.from('payment_transactions').update({
-      swypt_onramp_order_id: onrampResult.orderID || onrampResult.order_id,
-      status: 'stk_initiated',
-      metadata: {
-        ...paymentTransaction.metadata,
-        onramp_result: onrampResult
-      }
-    }).eq('id', paymentTransaction.id);
-    // Return success response
-    return new Response(JSON.stringify({
-      success: true,
-      paymentId: paymentTransaction.id,
-      transactionId: onrampResult.orderID || onrampResult.order_id,
-      message: 'STK Push initiated successfully. Customer will receive payment prompt.'
-    }), {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
-      },
-      status: 200
-    });
+
   } catch (error) {
-    console.error('Payment processing error:', error);
-    return new Response(JSON.stringify({
-      success: false,
-      error: error.message || 'An unexpected error occurred'
-    }), {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
-      },
-      status: 400
-    });
+    console.error("Request processing error:", error);
+    return new Response(
+      JSON.stringify({ error: "Internal server error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 });
