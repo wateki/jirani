@@ -21,7 +21,7 @@ import * as z from "zod";
 import { ChevronLeft, CheckCircle, ShoppingCart, Smartphone, MapPin, Loader2 } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { useCartSession } from "@/hooks/useCartSession";
-import { useAuth } from "@/contexts/AuthContext";
+import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { PaymentCheckout } from "@/components/payment/PaymentCheckout";
 import { LocationPicker } from "@/components/ui/location-picker";
 import ModernStoreHeader from "./ModernStoreHeader";
@@ -67,7 +67,7 @@ type CheckoutFormValues = z.infer<typeof checkoutFormSchema>;
 const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSettings }: CheckoutPageProps) => {
   const { storeSlug } = useParams<{ storeSlug: string }>();
   const { cartItems, clearCart, getCartTotal, getCartItemsCount } = useCart();
-  const { user } = useAuth();
+  const { user, isCustomer } = useCustomerAuth();
   const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(propStoreSettings || null);
   const [loading, setLoading] = useState(!propStoreSettings);
   const [orderPlaced, setOrderPlaced] = useState(false);
@@ -103,6 +103,23 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
       zipCode: "",
     },
   });
+
+  // Pre-fill form with user data if signed in
+  useEffect(() => {
+    if (user && user.user_metadata) {
+      const metadata = user.user_metadata;
+      
+      if (metadata.full_name) {
+        form.setValue('fullName', metadata.full_name);
+      }
+      if (user.email) {
+        form.setValue('email', user.email);
+      }
+      if (metadata.phone) {
+        form.setValue('phoneNumber', metadata.phone);
+      }
+    }
+  }, [user, form]);
 
   useEffect(() => {
     const fetchStoreData = async () => {
@@ -179,6 +196,9 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
   const tax = subtotal * 0.16; // 16% VAT (Kenya standard rate)
   const total = subtotal + shipping + tax;
 
+  // Check if user is signed in for enhanced experience
+  const isUserSignedIn = !!user;
+
   const onSubmit = async (data: CheckoutFormValues) => {
     if (cartItems.length === 0 || !storeSettings) {
       toast({
@@ -223,7 +243,8 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
           shipping_address: shippingAddress,
           status: 'pending',
           total_amount: total,
-          user_id: storeSettings.user_id
+          user_id: storeSettings.user_id,
+          customer_user_id: user?.id || null // Link to customer user account if signed in
         })
         .select()
         .single();
@@ -518,6 +539,49 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
           
           {/* Checkout Form */}
           <div className="md:col-span-2 order-1 md:order-2">
+            {/* User Authentication Status */}
+            <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className={`w-3 h-3 rounded-full ${isUserSignedIn ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                  <div>
+                    <h3 className="font-medium text-gray-900">
+                      {isUserSignedIn ? 'Signed in to Jirani' : 'Guest Checkout'}
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      {isUserSignedIn 
+                        ? 'Enjoy faster checkout and order tracking across all stores'
+                        : 'Sign in for a unified shopping experience across all Jirani stores'
+                      }
+                    </p>
+                  </div>
+                </div>
+                {!isUserSignedIn && (
+                  <Link to={`/customer/login?returnUrl=${encodeURIComponent(window.location.pathname)}`}>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      className="text-sm"
+                    >
+                      Sign in to Jirani
+                    </Button>
+                  </Link>
+                )}
+              </div>
+              
+              {!isUserSignedIn && (
+                <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <h4 className="font-medium text-blue-900 mb-2">Benefits of signing in:</h4>
+                  <ul className="text-sm text-blue-800 space-y-1">
+                    <li>• Track orders across all stores in one place</li>
+                    <li>• Faster checkout with saved information</li>
+                    <li>• Access to exclusive deals and promotions</li>
+                    <li>• Unified shopping cart across stores</li>
+                  </ul>
+                </div>
+              )}
+            </div>
+
             <div className="bg-white rounded-lg shadow-sm p-6">
               <h2 className="text-lg font-semibold mb-6">Shipping & Contact Information</h2>
               

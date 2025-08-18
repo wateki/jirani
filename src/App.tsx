@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { CustomerAuthProvider } from "@/contexts/CustomerAuthContext";
 import { CartProvider } from "@/contexts/CartContext";
 import { OutletProvider } from "@/contexts/OutletContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
@@ -16,6 +17,7 @@ import StoreFront from "@/components/store/StoreFront";
 import SubdomainStoreFront from "@/components/store/SubdomainStoreFront";
 import LoginPage from "./components/LoginPage";
 import SignupPage from "./components/SignupPage";
+import CustomerLoginPage from "@/components/store/CustomerLoginPage";
 /* import OrderManagement from "./components/store/OrderManagement";
 import PayoutsManagement from "./components/store/PayoutsManagement"; */
 import NotFound from "./pages/NotFound";
@@ -82,7 +84,7 @@ const Root = () => {
       
       <QueryClientProvider client={queryClient}>
         <SessionContextProvider supabaseClient={supabase}>
-        <AuthProvider>
+        <CustomerAuthProvider>
           <FavoritesProvider>
           <TooltipProvider>
               <BrowserRouter>
@@ -95,7 +97,7 @@ const Root = () => {
             </BrowserRouter>
           </TooltipProvider>
           </FavoritesProvider>
-        </AuthProvider>
+        </CustomerAuthProvider>
         </SessionContextProvider>
       </QueryClientProvider>
     );
@@ -117,6 +119,11 @@ const Root = () => {
                 <Route path="/" element={<Index />} />
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/signup" element={<SignupPage />} />
+                <Route path="/customer/login" element={
+                  <CustomerAuthProvider>
+                    <CustomerLoginPage />
+                  </CustomerAuthProvider>
+                } />
                 <Route
                   path="/dashboard"
                   element={
@@ -171,7 +178,11 @@ const Root = () => {
                 <Route path="/account" element={<Navigate to="/dashboard/account" replace />} />
                 
                 {/* Store routes - ensure consistent routing for /store/:storeSlug pattern */}
-                <Route path="/store/:storeSlug/*" element={<StoreFront />} />
+                <Route path="/store/:storeSlug/*" element={
+                  <CustomerAuthProvider>
+                    <StoreFront />
+                  </CustomerAuthProvider>
+                } />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </BrowserRouter>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { 
   Search, 
   Heart, 
@@ -10,12 +10,15 @@ import {
   Store,
   Home,
   Grid3X3,
-  InfoIcon
+  InfoIcon,
+  LogIn,
+  LogOut
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useFavorites } from "@/contexts/FavoritesContext";
+import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import type { Database } from "@/integrations/supabase/types";
 
 type Collection = Database['public']['Tables']['categories']['Row'];
@@ -44,6 +47,8 @@ const ModernStoreHeader = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { favoritesCount } = useFavorites();
+  const { user, isCustomer, signOut } = useCustomerAuth();
+  const location = useLocation();
 
   // Show top 5 collections for navigation
   const topCollections = collections.slice(0, 5);
@@ -205,14 +210,40 @@ const ModernStoreHeader = ({
                   )}
                 </Button>
               </Link>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-9 w-9 hover:bg-gray-100"
-                title="Account"
-              >
-                <User className="h-4 w-4 text-gray-600" />
-              </Button>
+              
+              {/* Customer Authentication Button */}
+              {user ? (
+                <div className="flex items-center space-x-2">
+                  <span className="hidden sm:inline text-sm text-gray-600">
+                    Hi, {user.user_metadata?.full_name || user.email?.split('@')[0]}
+                  </span>
+                  <Button 
+                    variant="outline"
+                    size="sm"
+                    className="h-9 px-3 text-sm font-medium border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-colors"
+                    onClick={signOut}
+                    title="Sign out"
+                  >
+                    <LogOut className="h-4 w-4 mr-1.5 text-gray-600" />
+                    <span className="hidden sm:inline">Sign out</span>
+                    <span className="sm:hidden">Sign out</span>
+                  </Button>
+                </div>
+              ) : (
+                <Link to={`/customer/login?returnUrl=${encodeURIComponent(location.pathname)}`}>
+                  <Button 
+                    variant="outline"
+                    size="sm"
+                    className="h-9 px-3 text-sm font-medium border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-colors"
+                    title="Sign in to Jirani"
+                  >
+                    <LogIn className="h-4 w-4 mr-1.5 text-gray-600" />
+                    <span className="hidden sm:inline">Sign in to Jirani</span>
+                    <span className="sm:hidden">Sign in</span>
+                  </Button>
+                </Link>
+              )}
+              
               <Button 
                 variant="ghost" 
                 size="icon" 
@@ -324,6 +355,36 @@ const ModernStoreHeader = ({
                   </Link>
                 </>
               )}
+
+              {/* Mobile Customer Authentication */}
+              <div className="border-t border-gray-200 pt-3 mt-3">
+                {user ? (
+                  <>
+                    <div className="px-3 py-2 text-sm text-gray-600">
+                      Hi, {user.user_metadata?.full_name || user.email?.split('@')[0]}
+                    </div>
+                    <button
+                      onClick={() => {
+                        signOut();
+                        setIsMenuOpen(false);
+                      }}
+                      className="flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50 transition-colors w-full"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      <span>Sign out</span>
+                    </button>
+                  </>
+                ) : (
+                  <Link
+                    to={`/customer/login?returnUrl=${encodeURIComponent(location.pathname)}`}
+                    className="flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50 transition-colors"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <LogIn className="h-4 w-4" />
+                    <span>Sign in to Jirani</span>
+                  </Link>
+                )}
+              </div>
             </div>
           </div>
         )}
