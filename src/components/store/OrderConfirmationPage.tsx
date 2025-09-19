@@ -240,7 +240,7 @@ const OrderConfirmationPage = ({ primaryColor, storeName, storeSettings: propSto
                   </div>
                   <div>
                     <h3 className="text-sm font-medium text-gray-500 mb-2">Shipping Address</h3>
-                    <p className="whitespace-pre-line">{order.shipping_address}</p>
+                    <p className="whitespace-pre-line">{String(order.shipping_address || '')}</p>
                   </div>
                 </div>
               </div>
