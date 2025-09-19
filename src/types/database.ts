@@ -45,12 +45,25 @@ export interface ExtendedStoreSettings {
   hero_heading: string;
   hero_subheading: string;
   button_style: string;
+  button_border_radius: string;
   store_slug: string | null;
   is_published: boolean;
   business_type_id: string | null;
   template_id: string | null;
   onboarding_completed: boolean;
   registration_step: number;
+  // Campaign/Banner settings
+  enable_campaigns: boolean;
+  campaign_rotation_speed: number;
+  custom_campaigns: any[];
+  campaign_background_image: string | null;
+  campaign_background_opacity: number;
+  // Hero Carousel settings
+  enable_hero_carousel: boolean;
+  hero_auto_scroll_speed: number;
+  hero_slides: any[];
+  hero_background_image: string | null;
+  hero_background_opacity: number;
   created_at: string;
   updated_at: string;
 }

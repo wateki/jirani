@@ -336,6 +336,7 @@ const ModernStorePage = ({ primaryColor, secondaryColor, storeName, storeSetting
       customization={customization}
       isPreview={false}
       storeSlug={storeSlug}
+      useAuth={true}
     />
   );
 };

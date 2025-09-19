@@ -18,6 +18,7 @@ const SignupPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([]);
   const [templates, setTemplates] = useState<StoreTemplate[]>([]);
+  const [isBusinessDetailsValid, setIsBusinessDetailsValid] = useState(false);
   const { signUpEnhanced, session } = useAuth();
   const navigate = useNavigate();
 
@@ -91,6 +92,12 @@ const SignupPage = () => {
   };
 
   const handleCompleteRegistration = async () => {
+    // Check if business details are valid (slug is available)
+    if (currentStep === 3 && !isBusinessDetailsValid) {
+      console.error('Cannot proceed: Store URL is not available');
+      return;
+    }
+
     setIsLoading(true);
     try {
       await signUpEnhanced(
@@ -155,7 +162,7 @@ const SignupPage = () => {
       case 3:
         return registrationData.template !== null;
       case 4:
-        return registrationData.businessName.trim().length > 0;
+        return registrationData.businessName.trim().length > 0 && isBusinessDetailsValid;
       case 5:
         return true;
       default:
@@ -265,6 +272,7 @@ const SignupPage = () => {
           <BusinessDetailsStep
             data={registrationData}
             onDataChange={handleStepData}
+            onValidationChange={setIsBusinessDetailsValid}
           />
         );
       case 5:

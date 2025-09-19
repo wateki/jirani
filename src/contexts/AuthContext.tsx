@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
-import { createStore, createStoreWithTemplate, completeEnhancedRegistration } from "@/utils/store";
+import { createStore, createStoreWithTemplate, completeEnhancedRegistration, linkStoreToUser } from "@/utils/store";
 import { BusinessType, StoreTemplate } from "@/types/database";
 import { log } from "console";
 
@@ -166,8 +166,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // If user is created and auto-confirmed (e.g., in development)
       if (data?.user) {
         // Create an enhanced store with business type and template
+        // Use null userId initially to avoid foreign key constraint issues during signup
         const result = await completeEnhancedRegistration({
-          userId: data.user.id,
+          userId: null, // Create store with null user_id initially
           name: registrationData.name,
           businessName: registrationData.businessName,
           businessType: registrationData.businessType,
@@ -175,8 +176,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         
         if (!result.success) {
-          
           throw new Error("Failed to create store with template");
+        }
+        
+        // Link the store to the user after successful creation
+        if (result.storeId) {
+          const linkResult = await linkStoreToUser(result.storeId, data.user.id);
+          if (!linkResult.success) {
+            console.warn("Failed to link store to user, but store was created successfully");
+          }
         }
       }
 

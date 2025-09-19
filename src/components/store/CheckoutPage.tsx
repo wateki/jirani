@@ -25,6 +25,7 @@ import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { PaymentCheckout } from "@/components/payment/PaymentCheckout";
 import { LocationPicker } from "@/components/ui/location-picker";
 import ModernStoreHeader from "./ModernStoreHeader";
+import ModernStoreHeaderWithAuth from "./ModernStoreHeaderWithAuth";
 import ModernCartSidebar from "./ModernCartSidebar";
 
 type Product = Database['public']['Tables']['products']['Row'];
@@ -35,6 +36,7 @@ interface CheckoutPageProps {
   primaryColor: string;
   storeName: string;
   storeSettings?: StoreSettings;
+  useAuth?: boolean; // New prop to determine whether to use auth version
 }
 
 interface CartItem {
@@ -64,7 +66,7 @@ const checkoutFormSchema = z.object({
 
 type CheckoutFormValues = z.infer<typeof checkoutFormSchema>;
 
-const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSettings }: CheckoutPageProps) => {
+const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSettings, useAuth = false }: CheckoutPageProps) => {
   const { storeSlug } = useParams<{ storeSlug: string }>();
   const { cartItems, clearCart, getCartTotal, getCartItemsCount } = useCart();
   const { user, isCustomer } = useCustomerAuth();
@@ -479,16 +481,29 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
       '--primary': storeSettings?.primary_color || '#4f46e5',
       '--secondary': storeSettings?.secondary_color || '#0f172a',
     } as React.CSSProperties}>
-      <ModernStoreHeader
-        storeName={storeSettings?.store_name || storeName}
-        primaryColor={primaryColor}
-        logoUrl={storeSettings?.logo_url}
-        storePath={storePath}
-        cartItemsCount={cartItemCount}
-        onCartClick={() => setIsCartOpen(true)}
-        collections={collections}
-        currentPage="home"
-      />
+      {useAuth ? (
+        <ModernStoreHeaderWithAuth
+          storeName={storeSettings?.store_name || storeName}
+          primaryColor={primaryColor}
+          logoUrl={storeSettings?.logo_url}
+          storePath={storePath}
+          cartItemsCount={cartItemCount}
+          onCartClick={() => setIsCartOpen(true)}
+          collections={collections}
+          currentPage="home"
+        />
+      ) : (
+        <ModernStoreHeader
+          storeName={storeSettings?.store_name || storeName}
+          primaryColor={primaryColor}
+          logoUrl={storeSettings?.logo_url}
+          storePath={storePath}
+          cartItemsCount={cartItemCount}
+          onCartClick={() => setIsCartOpen(true)}
+          collections={collections}
+          currentPage="home"
+        />
+      )}
 
       <div className="container mx-auto px-4 py-8">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">

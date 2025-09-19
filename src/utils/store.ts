@@ -41,7 +41,7 @@ export async function getUserStoreId(): Promise<string | null> {
  * @returns The created store's ID or null if creation failed
  */
 export async function createStoreWithTemplate(
-  userId: string, 
+  userId: string | null, 
   storeName: string, 
   businessTypeId?: string, 
   templateId?: string
@@ -74,6 +74,7 @@ export async function createStoreWithTemplate(
       template_id: templateId || null,
       registration_step: 5, // Completed registration
       onboarding_completed: true,
+      is_published: true, // Publish store by default so categories are visible
       // Apply template configuration if available
       ...(templateConfig && {
         primary_color: templateConfig.primary_color,
@@ -97,9 +98,19 @@ export async function createStoreWithTemplate(
       return null;
     }
     
-    // Create default categories if template provides them
-    if (templateConfig?.default_categories && data.id) {
-      await createDefaultCategories(data.id, templateConfig.default_categories);
+    // Apply store template using database function (includes category creation)
+    if (templateId && data.id) {
+      const { data: templateResult, error: templateError } = await supabase
+        .rpc('apply_store_template' as any, {
+          p_store_id: data.id,
+          p_template_id: templateId
+        });
+      
+      if (templateError) {
+        console.error("Error applying store template:", templateError);
+      } else {
+        console.log("Store template applied successfully:", templateResult);
+      }
     }
     
     return data.id;
@@ -109,31 +120,6 @@ export async function createStoreWithTemplate(
   }
 }
 
-/**
- * Creates default categories for a store based on template configuration
- * @param storeId The store ID
- * @param categories Array of category names
- */
-async function createDefaultCategories(storeId: string, categories: string[]): Promise<void> {
-  try {
-    const categoryInserts = categories.map(categoryName => ({
-      store_id: storeId,
-      name: categoryName,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    }));
-    
-    const { error } = await supabase
-      .from('categories')
-      .insert(categoryInserts);
-    
-    if (error) {
-      console.error("Error creating default categories:", error);
-    }
-  } catch (error) {
-    console.error("Error in createDefaultCategories:", error);
-  }
-}
 
 /**
  * Legacy function for backward compatibility
@@ -178,7 +164,7 @@ export async function getOrCreateUserStore(userId: string, storeName: string = "
  * @returns Success status and store ID
  */
 export async function completeEnhancedRegistration(registrationData: {
-  userId: string;
+  userId: string | null;
   name: string;
   businessName: string;
   businessType: BusinessType | null;
@@ -199,6 +185,36 @@ export async function completeEnhancedRegistration(registrationData: {
     return { success: true, storeId };
   } catch (error) {
     console.error("Error in completeEnhancedRegistration:", error);
+    return { success: false };
+  }
+}
+
+/**
+ * Update the user_id for a store after user authentication is complete
+ * This is used to link a store created during signup to the authenticated user
+ * @param storeId The store ID to update
+ * @param userId The authenticated user ID
+ * @returns Success status
+ */
+export async function linkStoreToUser(storeId: string, userId: string): Promise<{ success: boolean }> {
+  try {
+    const { error } = await supabase
+      .from('store_settings')
+      .update({ 
+        user_id: userId,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', storeId)
+      .is('user_id', null); // Only update if user_id is currently null
+    
+    if (error) {
+      console.error("Error linking store to user:", error);
+      return { success: false };
+    }
+    
+    return { success: true };
+  } catch (error) {
+    console.error("Error in linkStoreToUser:", error);
     return { success: false };
   }
 }

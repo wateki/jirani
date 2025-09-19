@@ -4,6 +4,7 @@ import { CheckCircle, ShoppingBag, Loader2, ChevronLeft, Home } from "lucide-rea
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import ModernStoreHeader from "./ModernStoreHeader";
+import ModernStoreHeaderWithAuth from "./ModernStoreHeaderWithAuth";
 import type { Database } from "@/integrations/supabase/types";
 
 type StoreSettings = Database['public']['Tables']['store_settings']['Row'];
@@ -16,9 +17,10 @@ interface OrderConfirmationPageProps {
   primaryColor: string;
   storeName: string;
   storeSettings?: StoreSettings;
+  useAuth?: boolean; // New prop to determine whether to use auth version
 }
 
-const OrderConfirmationPage = ({ primaryColor, storeName, storeSettings: propStoreSettings }: OrderConfirmationPageProps) => {
+const OrderConfirmationPage = ({ primaryColor, storeName, storeSettings: propStoreSettings, useAuth = false }: OrderConfirmationPageProps) => {
   const { storeSlug, orderId } = useParams<{ storeSlug: string; orderId: string }>();
   const [order, setOrder] = useState<Order | null>(null);
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
@@ -121,16 +123,29 @@ const OrderConfirmationPage = ({ primaryColor, storeName, storeSettings: propSto
   
   return (
     <div className="min-h-screen flex flex-col">
-        <ModernStoreHeader
-          storeName={storeSettings?.store_name || storeName}
-          primaryColor={primaryColor}
-          logoUrl={storeSettings?.logo_url}
-          storePath={storePath}
-          cartItemsCount={0}
-          onCartClick={() => {}}
-          collections={[]}
-          currentPage="home"
-        />
+        {useAuth ? (
+          <ModernStoreHeaderWithAuth
+            storeName={storeSettings?.store_name || storeName}
+            primaryColor={primaryColor}
+            logoUrl={storeSettings?.logo_url}
+            storePath={storePath}
+            cartItemsCount={0}
+            onCartClick={() => {}}
+            collections={[]}
+            currentPage="home"
+          />
+        ) : (
+          <ModernStoreHeader
+            storeName={storeSettings?.store_name || storeName}
+            primaryColor={primaryColor}
+            logoUrl={storeSettings?.logo_url}
+            storePath={storePath}
+            cartItemsCount={0}
+            onCartClick={() => {}}
+            collections={[]}
+            currentPage="home"
+          />
+        )}
 
       {/* Order Confirmation Content */}
       <div className="flex-grow container mx-auto px-6 py-12">

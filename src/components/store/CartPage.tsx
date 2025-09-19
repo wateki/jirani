@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ChevronLeft, ShoppingBag } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import ModernStoreHeader from "./ModernStoreHeader";
+import ModernStoreHeaderWithAuth from "./ModernStoreHeaderWithAuth";
 import ModernCartSidebar from "./ModernCartSidebar";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -17,9 +18,10 @@ interface CartPageProps {
   primaryColor: string;
   storeName: string;
   storeSettings?: StoreSettings;
+  useAuth?: boolean; // New prop to determine whether to use auth version
 }
 
-const CartPage = ({ primaryColor, storeName, storeSettings: propStoreSettings }: CartPageProps) => {
+const CartPage = ({ primaryColor, storeName, storeSettings: propStoreSettings, useAuth = false }: CartPageProps) => {
   const { storeSlug } = useParams<{ storeSlug: string }>();
   const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(propStoreSettings || null);
   const [loading, setLoading] = useState(!propStoreSettings);
@@ -69,16 +71,29 @@ const CartPage = ({ primaryColor, storeName, storeSettings: propStoreSettings }:
   if (cartItems.length === 0) {
     return (
       <div className="min-h-screen flex flex-col">
-        <ModernStoreHeader
-          storeName={storeSettings?.store_name || storeName}
-          primaryColor={primaryColor}
-          logoUrl={storeSettings?.logo_url}
-          storePath={storePath}
-          cartItemsCount={getCartItemsCount()}
-          onCartClick={() => setIsCartOpen(true)}
-          collections={collections}
-          currentPage="home"
-        />
+        {useAuth ? (
+          <ModernStoreHeaderWithAuth
+            storeName={storeSettings?.store_name || storeName}
+            primaryColor={primaryColor}
+            logoUrl={storeSettings?.logo_url}
+            storePath={storePath}
+            cartItemsCount={getCartItemsCount()}
+            onCartClick={() => setIsCartOpen(true)}
+            collections={collections}
+            currentPage="home"
+          />
+        ) : (
+          <ModernStoreHeader
+            storeName={storeSettings?.store_name || storeName}
+            primaryColor={primaryColor}
+            logoUrl={storeSettings?.logo_url}
+            storePath={storePath}
+            cartItemsCount={getCartItemsCount()}
+            onCartClick={() => setIsCartOpen(true)}
+            collections={collections}
+            currentPage="home"
+          />
+        )}
 
         {/* Empty Cart */}
         <div className="flex-grow flex flex-col items-center justify-center p-8">
@@ -120,16 +135,29 @@ const CartPage = ({ primaryColor, storeName, storeSettings: propStoreSettings }:
 
   return (
     <div className="min-h-screen flex flex-col">
-      <ModernStoreHeader
-        storeName={storeSettings?.store_name || storeName}
-        primaryColor={primaryColor}
-        logoUrl={storeSettings?.logo_url}
-        storePath={storePath}
-        cartItemsCount={getCartItemsCount()}
-        onCartClick={() => setIsCartOpen(true)}
-        collections={collections}
-        currentPage="home"
-      />
+      {useAuth ? (
+        <ModernStoreHeaderWithAuth
+          storeName={storeSettings?.store_name || storeName}
+          primaryColor={primaryColor}
+          logoUrl={storeSettings?.logo_url}
+          storePath={storePath}
+          cartItemsCount={getCartItemsCount()}
+          onCartClick={() => setIsCartOpen(true)}
+          collections={collections}
+          currentPage="home"
+        />
+      ) : (
+        <ModernStoreHeader
+          storeName={storeSettings?.store_name || storeName}
+          primaryColor={primaryColor}
+          logoUrl={storeSettings?.logo_url}
+          storePath={storePath}
+          cartItemsCount={getCartItemsCount()}
+          onCartClick={() => setIsCartOpen(true)}
+          collections={collections}
+          currentPage="home"
+        />
+      )}
 
       {/* Cart Content */}
       <div className="flex-grow container mx-auto px-6 py-12">

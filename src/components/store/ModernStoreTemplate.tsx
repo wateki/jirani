@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import ModernCartSidebar from "./ModernCartSidebar";
 import ModernStoreHeader from "./ModernStoreHeader";
+import ModernStoreHeaderWithAuth from "./ModernStoreHeaderWithAuth";
 import type { Database } from "@/integrations/supabase/types";
 
 type Collection = Database['public']['Tables']['categories']['Row'];
@@ -73,6 +74,7 @@ interface ModernStoreTemplateProps {
   isPreview?: boolean;
   storeSlug?: string;
   className?: string;
+  useAuth?: boolean; // New prop to determine whether to use auth version
 }
 
 
@@ -550,7 +552,8 @@ const ModernStoreTemplate = ({
   customization, 
   isPreview = false, 
   storeSlug,
-  className = ""
+  className = "",
+  useAuth = false
 }: ModernStoreTemplateProps) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -757,16 +760,29 @@ const ModernStoreTemplate = ({
 
   return (
     <div className={`min-h-screen bg-white font-inter ${className}`}>
-      <ModernStoreHeader
-        storeName={customization.storeName}
-        primaryColor={customization.primaryColor}
-        logoUrl={customization.logoImage}
-        storePath={storePath}
-        cartItemsCount={cartItemsCount}
-        onCartClick={() => setIsCartOpen(true)}
-        collections={displayCollections}
-        currentPage="home"
-      />
+      {useAuth ? (
+        <ModernStoreHeaderWithAuth
+          storeName={customization.storeName}
+          primaryColor={customization.primaryColor}
+          logoUrl={customization.logoImage}
+          storePath={storePath}
+          cartItemsCount={cartItemsCount}
+          onCartClick={() => setIsCartOpen(true)}
+          collections={displayCollections}
+          currentPage="home"
+        />
+      ) : (
+        <ModernStoreHeader
+          storeName={customization.storeName}
+          primaryColor={customization.primaryColor}
+          logoUrl={customization.logoImage}
+          storePath={storePath}
+          cartItemsCount={cartItemsCount}
+          onCartClick={() => setIsCartOpen(true)}
+          collections={displayCollections}
+          currentPage="home"
+        />
+      )}
       
       {/* Campaign Banner */}
       {customization.enableCampaigns && customization.customCampaigns.length > 0 && (

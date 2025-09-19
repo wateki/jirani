@@ -26,6 +26,7 @@ import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ModernCartSidebar from "./ModernCartSidebar";
 import ModernStoreHeader from "./ModernStoreHeader";
+import ModernStoreHeaderWithAuth from "./ModernStoreHeaderWithAuth";
 import type { Database } from "@/integrations/supabase/types";
 
 type Collection = Database['public']['Tables']['categories']['Row'];
@@ -37,6 +38,7 @@ interface ModernCollectionsPageProps {
   secondaryColor?: string;
   storeName: string;
   storeSettings?: StoreSettings;
+  useAuth?: boolean; // New prop to determine whether to use auth version
 }
 
 // Campaign Banner Component - using real store campaigns
@@ -561,7 +563,7 @@ const FiltersSidebar = ({
 };
 
 // Main Component
-const ModernCollectionsPage = ({ primaryColor, secondaryColor, storeName, storeSettings }: ModernCollectionsPageProps) => {
+const ModernCollectionsPage = ({ primaryColor, secondaryColor, storeName, storeSettings, useAuth = false }: ModernCollectionsPageProps) => {
   const { storeSlug, collectionId } = useParams();
   const [products, setProducts] = useState<Product[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -705,15 +707,27 @@ const ModernCollectionsPage = ({ primaryColor, secondaryColor, storeName, storeS
 
   return (
     <div className="min-h-screen bg-white font-inter">
-      <ModernStoreHeader
-        storeName={storeName}
-        primaryColor={primaryColor}
-        storePath={storePath}
-        cartItemsCount={cartItemsCount}
-        onCartClick={() => setIsCartOpen(true)}
-        collections={collections}
-        currentPage="collections"
-      />
+      {useAuth ? (
+        <ModernStoreHeaderWithAuth
+          storeName={storeName}
+          primaryColor={primaryColor}
+          storePath={storePath}
+          cartItemsCount={cartItemsCount}
+          onCartClick={() => setIsCartOpen(true)}
+          collections={collections}
+          currentPage="collections"
+        />
+      ) : (
+        <ModernStoreHeader
+          storeName={storeName}
+          primaryColor={primaryColor}
+          storePath={storePath}
+          cartItemsCount={cartItemsCount}
+          onCartClick={() => setIsCartOpen(true)}
+          collections={collections}
+          currentPage="collections"
+        />
+      )}
       
       {/* Campaign Banner */}
       {fetchedStoreSettings?.enable_campaigns && fetchedStoreSettings?.custom_campaigns && (

@@ -22,6 +22,7 @@ const StoreCustomizer = () => {
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [isPublished, setIsPublished] = useState(false);
+  const [storeId, setStoreId] = useState<string | null>(null);
 
   // Structured state objects
   const [storeInfo, setStoreInfo] = useState({
@@ -97,6 +98,9 @@ const StoreCustomizer = () => {
       }
 
       if (data) {
+        // Store the store ID for updates
+        setStoreId(data.id);
+        
         // Map database fields to state structure
           setStoreInfo({
           storeName: data.store_name || "",
@@ -291,6 +295,7 @@ const StoreCustomizer = () => {
       
       // Prepare data for database
       const storeData: StoreSettingsInsert = {
+        ...(storeId && { id: storeId }), // Include ID if updating existing store
         user_id: user.id,
         store_name: storeInfo.storeName,
         store_slug: storeSlug,
@@ -321,7 +326,7 @@ const StoreCustomizer = () => {
       const { error } = await supabase
         .from('store_settings')
         .upsert(storeData, {
-          onConflict: 'user_id'
+          onConflict: 'id'
         });
 
       if (error) {

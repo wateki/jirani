@@ -23,6 +23,7 @@ import { useCart } from "@/contexts/CartContext";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import { useToast } from "@/hooks/use-toast";
 import ModernStoreHeader from "./ModernStoreHeader";
+import ModernStoreHeaderWithAuth from "./ModernStoreHeaderWithAuth";
 import ModernCartSidebar from "./ModernCartSidebar";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -37,9 +38,10 @@ interface ModernProductPageProps {
   secondaryColor?: string;
   storeName: string;
   storeSettings?: Database['public']['Tables']['store_settings']['Row'];
+  useAuth?: boolean; // New prop to determine whether to use auth version
 }
 
-const ModernProductPage = ({ primaryColor, secondaryColor, storeName, storeSettings }: ModernProductPageProps) => {
+const ModernProductPage = ({ primaryColor, secondaryColor, storeName, storeSettings, useAuth = false }: ModernProductPageProps) => {
   const { storeSlug, collectionId, productId } = useParams();
   const navigate = useNavigate();
   const [product, setProduct] = useState<Product | null>(null);
@@ -219,16 +221,29 @@ const ModernProductPage = ({ primaryColor, secondaryColor, storeName, storeSetti
 
   return (
     <div className="min-h-screen bg-white font-inter">
-      <ModernStoreHeader
-        storeName={storeName}
-        primaryColor={primaryColor}
-        logoUrl={storeSettings?.logo_url}
-        storePath={storePath}
-        cartItemsCount={cartItemsCount}
-        onCartClick={() => setIsCartOpen(true)}
-        collections={collections}
-        currentPage="product"
-      />
+      {useAuth ? (
+        <ModernStoreHeaderWithAuth
+          storeName={storeName}
+          primaryColor={primaryColor}
+          logoUrl={storeSettings?.logo_url}
+          storePath={storePath}
+          cartItemsCount={cartItemsCount}
+          onCartClick={() => setIsCartOpen(true)}
+          collections={collections}
+          currentPage="product"
+        />
+      ) : (
+        <ModernStoreHeader
+          storeName={storeName}
+          primaryColor={primaryColor}
+          logoUrl={storeSettings?.logo_url}
+          storePath={storePath}
+          cartItemsCount={cartItemsCount}
+          onCartClick={() => setIsCartOpen(true)}
+          collections={collections}
+          currentPage="product"
+        />
+      )}
 
       {/* Breadcrumb */}
       <div className="bg-gray-50 border-b">

@@ -20,6 +20,22 @@ export const TemplateSelectionStep: React.FC<TemplateSelectionStepProps> = ({
     onDataChange({ template });
   };
 
+  // Helper function to safely get categories array
+  const getCategoriesArray = (categories: any): string[] => {
+    if (Array.isArray(categories)) {
+      return categories;
+    }
+    if (typeof categories === 'string') {
+      try {
+        return JSON.parse(categories);
+      } catch (e) {
+        console.warn('Failed to parse categories:', e);
+        return [];
+      }
+    }
+    return [];
+  };
+
   const getLayoutStyle = (layoutStyle: string) => {
     switch (layoutStyle) {
       case 'grid': return 'Grid Layout';
@@ -180,16 +196,24 @@ export const TemplateSelectionStep: React.FC<TemplateSelectionStepProps> = ({
                   <span className="text-sm font-medium">Included Categories</span>
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  {template.template_config.default_categories.slice(0, 4).map((category, index) => (
-                    <Badge key={index} variant="outline" className="text-xs">
-                      {category}
-                    </Badge>
-                  ))}
-                  {template.template_config.default_categories.length > 4 && (
-                    <Badge variant="outline" className="text-xs">
-                      +{template.template_config.default_categories.length - 4} more
-                    </Badge>
-                  )}
+                  {(() => {
+                    const categoryArray = getCategoriesArray(template.template_config.default_categories);
+                    
+                    return categoryArray.slice(0, 4).map((category, index) => (
+                      <Badge key={index} variant="outline" className="text-xs">
+                        {category}
+                      </Badge>
+                    ));
+                  })()}
+                  {(() => {
+                    const categoryArray = getCategoriesArray(template.template_config.default_categories);
+                    
+                    return categoryArray.length > 4 && (
+                      <Badge variant="outline" className="text-xs">
+                        +{categoryArray.length - 4} more
+                      </Badge>
+                    );
+                  })()}
                 </div>
               </div>
 
