@@ -31,6 +31,7 @@ const RegistrationFlow = () => {
     businessType: null,
     template: null,
     currentStep: 1,
+    agreedToPrivacyPolicy: false,
   });
 
   const totalSteps = 5;
@@ -79,8 +80,41 @@ const RegistrationFlow = () => {
     }
   };
 
-  const handleNext = () => {
-    if (currentStep < totalSteps) {
+  const handleNext = async () => {
+    if (currentStep === 1) {
+      // Step 1: Basic signup with just name, email, password
+      setIsLoading(true);
+      try {
+        const { data, error } = await supabase.auth.signUp({
+          email: registrationData.email,
+          password: registrationData.password,
+          options: {
+            data: {
+              name: registrationData.name,
+            }
+          }
+        });
+
+        if (error) throw error;
+        
+        // Ensure account was actually created
+        if (!data?.user?.id) {
+          setIsLoading(false);
+          return;
+        }
+
+        // First stop loading, then advance to next step
+        setIsLoading(false);
+
+        const nextStep = currentStep + 1;
+        setCurrentStep(nextStep);
+        setRegistrationData(prev => ({ ...prev, currentStep: nextStep }));
+      } catch (error) {
+        console.error('Signup error:', error);
+        setIsLoading(false);
+        // Don't proceed to next step if signup fails
+      }
+    } else if (currentStep < totalSteps) {
       const nextStep = currentStep + 1;
       setCurrentStep(nextStep);
       setRegistrationData(prev => ({ ...prev, currentStep: nextStep }));
@@ -102,22 +136,27 @@ const RegistrationFlow = () => {
   const handleCompleteRegistration = async () => {
     setIsLoading(true);
     try {
-      // Use the enhanced signup method with business type and template data
-      await signUpEnhanced(
-        registrationData.email, 
-        registrationData.password, 
-        {
-          name: registrationData.name,
-          businessName: registrationData.businessName,
-          businessType: registrationData.businessType,
-          template: registrationData.template,
-        }
-      );
+      // Create store settings with all business details
+      if (session?.user) {
+        const { error } = await supabase
+          .from('store_settings')
+          .insert({
+            user_id: session.user.id,
+            store_name: registrationData.businessName,
+            business_type_id: registrationData.businessType?.id,
+            template_id: registrationData.template?.id,
+            is_published: false, // Start as unpublished
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+
+        if (error) throw error;
+      }
       
-      console.log('Enhanced registration completed successfully');
-      // User will be redirected by the auth context after email verification
+      console.log('Registration completed successfully');
+      // User will be redirected by the auth context
     } catch (error) {
-      console.error('Registration error:', error);
+      console.error('Registration completion error:', error);
     } finally {
       setIsLoading(false);
     }
@@ -125,22 +164,22 @@ const RegistrationFlow = () => {
 
   const getStepTitle = () => {
     switch (currentStep) {
-      case 1: return "Personal Information";
+      case 1: return "Create Your Account";
       case 2: return "Business Type";
       case 3: return "Choose Template";
       case 4: return "Business Details";
-      case 5: return "Review & Confirm";
+      case 5: return "Review & Complete";
       default: return "Registration";
     }
   };
 
   const getStepDescription = () => {
     switch (currentStep) {
-      case 1: return "Let's start with your basic information";
+      case 1: return "Create your account to get started";
       case 2: return "What type of business are you running?";
       case 3: return "Pick a template that fits your business";
       case 4: return "Tell us more about your business";
-      case 5: return "Review your information and complete registration";
+      case 5: return "Review your information and complete setup";
       default: return "Complete your registration";
     }
   };
@@ -150,7 +189,8 @@ const RegistrationFlow = () => {
       case 1:
         return registrationData.name.trim() !== "" && 
                registrationData.email.trim() !== "" && 
-               registrationData.password.length >= 6;
+               registrationData.password.length >= 6 &&
+               registrationData.agreedToPrivacyPolicy;
       case 2:
         return registrationData.businessType !== null;
       case 3:
@@ -247,9 +287,9 @@ const RegistrationFlow = () => {
             {currentStep < totalSteps ? (
               <Button
                 onClick={handleNext}
-                disabled={!canProceedToNext()}
+                disabled={!canProceedToNext() || isLoading}
               >
-                Next
+                {currentStep === 1 ? (isLoading ? "Creating Account..." : "Create Account") : "Next"}
                 <ArrowRight className="h-4 w-4 ml-2" />
               </Button>
             ) : (

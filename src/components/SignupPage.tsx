@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Link, useNavigate } from "react-router-dom";
 import { ShoppingBag, User, Mail, Lock, Check, ArrowLeft, ArrowRight } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -19,6 +20,9 @@ const SignupPage = () => {
   const [businessTypes, setBusinessTypes] = useState<BusinessType[]>([]);
   const [templates, setTemplates] = useState<StoreTemplate[]>([]);
   const [isBusinessDetailsValid, setIsBusinessDetailsValid] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string>("");
+  const [successMessage, setSuccessMessage] = useState<string>("");
+  const [registrationFinished, setRegistrationFinished] = useState(false);
   const { signUpEnhanced, session } = useAuth();
   const navigate = useNavigate();
 
@@ -30,6 +34,7 @@ const SignupPage = () => {
     businessType: null,
     template: null,
     currentStep: 1,
+    agreedToPrivacyPolicy: false,
   });
 
   const totalSteps = 5;
@@ -37,10 +42,10 @@ const SignupPage = () => {
 
   // Use useEffect for redirection
   useEffect(() => {
-    if (session) {
+    if (session && registrationFinished) {
       navigate("/dashboard");
     }
-  }, [session, navigate]);
+  }, [session, registrationFinished, navigate]);
 
   // Fetch business types and templates
   useEffect(() => {
@@ -71,8 +76,54 @@ const SignupPage = () => {
     }
   };
 
-  const handleNext = () => {
-    if (currentStep < totalSteps) {
+  const handleNext = async () => {
+    // Clear previous messages
+    setErrorMessage("");
+    setSuccessMessage("");
+
+    if (currentStep === 1) {
+      // Step 1: Basic signup with just name, email, password
+      setIsLoading(true);
+      try {
+        const { data, error } = await supabase.auth.signUp({
+          email: registrationData.email,
+          password: registrationData.password,
+          options: {
+            data: {
+              name: registrationData.name,
+            }
+          }
+        });
+
+        if (error) {
+          setErrorMessage(error.message || "Failed to create account. Please try again.");
+          setIsLoading(false);
+          return;
+        }
+        
+        // Ensure account was actually created
+        if (!data?.user?.id) {
+          setErrorMessage("Account creation failed. Please try again.");
+          setIsLoading(false);
+          return;
+        }
+
+        // Show success message
+        setSuccessMessage("Account created successfully! Please check your email to verify your account.");
+
+        // First stop loading, then advance to next step
+        setIsLoading(false);
+
+        const nextStep = currentStep + 1;
+        setCurrentStep(nextStep);
+        setRegistrationData(prev => ({ ...prev, currentStep: nextStep }));
+      } catch (error: any) {
+        console.error('Signup error:', error);
+        setErrorMessage(error.message || "An unexpected error occurred. Please try again.");
+        setIsLoading(false);
+        // Don't proceed to next step if signup fails
+      }
+    } else if (currentStep < totalSteps) {
       const nextStep = currentStep + 1;
       setCurrentStep(nextStep);
       setRegistrationData(prev => ({ ...prev, currentStep: nextStep }));
@@ -89,29 +140,53 @@ const SignupPage = () => {
 
   const handleStepData = (stepData: Partial<RegistrationData>) => {
     setRegistrationData(prev => ({ ...prev, ...stepData }));
+    // Clear messages when user makes changes
+    if (errorMessage || successMessage) {
+      setErrorMessage("");
+      setSuccessMessage("");
+    }
   };
 
   const handleCompleteRegistration = async () => {
+    // Clear previous messages
+    setErrorMessage("");
+    setSuccessMessage("");
+
     // Check if business details are valid (slug is available)
-    if (currentStep === 3 && !isBusinessDetailsValid) {
-      console.error('Cannot proceed: Store URL is not available');
+    if (currentStep === 4 && !isBusinessDetailsValid) {
+      setErrorMessage("Store URL is not available. Please choose a different store name.");
       return;
     }
 
     setIsLoading(true);
     try {
-      await signUpEnhanced(
-        registrationData.email, 
-        registrationData.password, 
-        {
-          name: registrationData.name,
-          businessName: registrationData.businessName,
-          businessType: registrationData.businessType,
-          template: registrationData.template,
+      // Create the store now (final step), owned by the authenticated user
+      if (session?.user) {
+        const { error } = await supabase
+          .from('store_settings')
+          .insert({
+            user_id: session.user.id,
+            store_name: registrationData.businessName,
+            business_type_id: registrationData.businessType?.id,
+            template_id: registrationData.template?.id,
+            is_published: false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+
+        if (error) {
+          setErrorMessage(error.message || "Failed to create store settings. Please try again.");
+          setIsLoading(false);
+          return;
         }
-      );
-    } catch (error) {
-      console.error('Registration error:', error);
+      }
+      
+      setSuccessMessage("Registration completed successfully! Redirecting to your dashboard...");
+      setRegistrationFinished(true);
+      // User will be redirected by the auth context
+    } catch (error: any) {
+      console.error('Registration completion error:', error);
+      setErrorMessage(error.message || "An unexpected error occurred. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -156,7 +231,7 @@ const SignupPage = () => {
   const canProceed = () => {
     switch (currentStep) {
       case 1:
-        return registrationData.name && registrationData.email && registrationData.password;
+        return registrationData.name && registrationData.email && registrationData.password && registrationData.agreedToPrivacyPolicy;
       case 2:
         return registrationData.businessType !== null;
       case 3:
@@ -233,17 +308,19 @@ const SignupPage = () => {
                   id="terms"
                   type="checkbox"
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  checked={registrationData.agreedToPrivacyPolicy}
+                  onChange={(e) => handleStepData({ agreedToPrivacyPolicy: e.target.checked })}
                   required
                 />
               </div>
               <div className="ml-3 text-sm">
                 <label htmlFor="terms" className="text-gray-600">
                   I agree to the{" "}
-                  <a href="#" className="text-blue-600 hover:text-blue-800">
+                  <a href="/terms-of-service" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
                     Terms of Service
                   </a>{" "}
                   and{" "}
-                  <a href="#" className="text-blue-600 hover:text-blue-800">
+                  <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
                     Privacy Policy
                   </a>
                 </label>
@@ -319,6 +396,24 @@ const SignupPage = () => {
               {getStepDescription()}
             </CardDescription>
           </CardHeader>
+          
+          {/* Error and Success Messages */}
+          {errorMessage && (
+            <div className="px-6">
+              <Alert variant="destructive">
+                <AlertDescription>{errorMessage}</AlertDescription>
+              </Alert>
+            </div>
+          )}
+          
+          {successMessage && (
+            <div className="px-6">
+              <Alert className="border-green-200 bg-green-50 text-green-800">
+                <AlertDescription>{successMessage}</AlertDescription>
+              </Alert>
+            </div>
+          )}
+          
           <CardContent className="min-h-[400px]">
             {renderStep()}
           </CardContent>
@@ -337,10 +432,10 @@ const SignupPage = () => {
                 </Button>
                 <Button
                   onClick={handleNext}
-                  disabled={!canProceed()}
+                  disabled={!canProceed() || isLoading}
                   className="flex items-center"
                 >
-                  Next
+                  {currentStep === 1 ? (isLoading ? "Creating Account..." : "Create Account") : "Next"}
                   <ArrowRight className="h-4 w-4 ml-2" />
                 </Button>
               </div>

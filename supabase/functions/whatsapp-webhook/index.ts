@@ -1,4 +1,5 @@
 // Minimal WhatsApp webhook Edge Function scaffold
+import { log } from 'console'
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 // Fallback declaration for local tooling; Supabase Edge runtime provides Deno
 // deno-lint-ignore no-var
@@ -392,6 +393,8 @@ async function handleStoreSelection(waPhone: string, storeId: string) {
 async function isValidVerifyToken(token: string): Promise<boolean> {
   // First, check against environment variable (primary validation)
   const envVerifyToken = Deno.env.get('META_WEBHOOK_VERIFY_TOKEN')
+  console.log(envVerifyToken);
+  
   if (envVerifyToken && envVerifyToken === token) {
     return true
   }

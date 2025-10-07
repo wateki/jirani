@@ -42,6 +42,21 @@ export const BusinessDetailsStep: React.FC<BusinessDetailsStepProps> = ({ data, 
       return;
     }
 
+    // Ensure an authenticated session is present before querying (RLS requirement)
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData?.session) {
+      setSlugValidation({
+        isChecking: true,
+        isAvailable: null,
+        message: "Signing you in..."
+      });
+      // Retry shortly – auth state can settle right after sign up
+      setTimeout(() => {
+        void checkSlugAvailability(slug);
+      }, 400);
+      return;
+    }
+
     setSlugValidation({
       isChecking: true,
       isAvailable: null,
@@ -49,32 +64,30 @@ export const BusinessDetailsStep: React.FC<BusinessDetailsStepProps> = ({ data, 
     });
 
     try {
-      const { data: existingStore, error } = await supabase
-        .from('store_settings')
-        .select('id')
-        .eq('store_slug', slug)
-        .single();
+      // Use RPC that is granted to anon/auth
+      const { data: taken, error } = await (supabase as any)
+        .rpc('is_store_slug_taken', { p_slug: slug });
 
-      if (error && error.code === 'PGRST116') {
-        // No store found with this slug - it's available
+      if (error) {
         setSlugValidation({
           isChecking: false,
-          isAvailable: true,
-          message: "This URL is available!"
+          isAvailable: null,
+          message: "Unable to check availability. Please try again."
         });
-      } else if (existingStore) {
-        // Store found with this slug - it's taken
+        return;
+      }
+
+      if (taken === true) {
         setSlugValidation({
           isChecking: false,
           isAvailable: false,
           message: "This URL is already taken. Please try a different name."
         });
       } else {
-        // Other error
         setSlugValidation({
           isChecking: false,
-          isAvailable: null,
-          message: "Unable to check availability. Please try again."
+          isAvailable: true,
+          message: "This URL is available!"
         });
       }
     } catch (error) {
@@ -91,7 +104,7 @@ export const BusinessDetailsStep: React.FC<BusinessDetailsStepProps> = ({ data, 
     const slug = generateSlug(data.businessName);
     if (slug) {
       const timeoutId = setTimeout(() => {
-        checkSlugAvailability(slug);
+        void checkSlugAvailability(slug);
       }, 500); // Wait 500ms after user stops typing
 
       return () => clearTimeout(timeoutId);

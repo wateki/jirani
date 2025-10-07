@@ -76,4 +76,5 @@ export interface RegistrationData {
   businessType: BusinessType | null;
   template: StoreTemplate | null;
   currentStep: number;
+  agreedToPrivacyPolicy: boolean;
 } 
