@@ -140,4 +140,6 @@ BEGIN
     WHERE p.store_id = p_store_id
     ORDER BY p.name;
 END;
-$$; 
+$$;
+
+

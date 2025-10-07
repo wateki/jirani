@@ -1,19 +1,18 @@
 -- Enhanced Payment Architecture Implementation
 -- Based on the multitenant payment architecture plan
 
--- First, enhance the existing stores table with payment-related fields
-ALTER TABLE stores ADD COLUMN IF NOT EXISTS 
-  business_type TEXT DEFAULT 'individual',
-  kyc_status TEXT DEFAULT 'pending' CHECK (kyc_status IN ('pending', 'verified', 'rejected')),
-  kyc_documents JSONB,
-  payout_phone TEXT,
-  payout_bank_details JSONB,
-  payout_method TEXT DEFAULT 'mpesa' CHECK (payout_method IN ('mpesa', 'bank')),
-  account_balance DECIMAL(15,2) DEFAULT 0.00,
-  reserved_balance DECIMAL(15,2) DEFAULT 0.00,
-  minimum_payout_amount DECIMAL(10,2) DEFAULT 100.00,
-  auto_payout_enabled BOOLEAN DEFAULT false,
-  auto_payout_threshold DECIMAL(10,2) DEFAULT 5000.00;
+ALTER TABLE stores 
+  ADD COLUMN IF NOT EXISTS business_type TEXT DEFAULT 'individual',
+  ADD COLUMN IF NOT EXISTS kyc_status TEXT DEFAULT 'pending' CHECK (kyc_status IN ('pending', 'verified', 'rejected')),
+  ADD COLUMN IF NOT EXISTS kyc_documents JSONB,
+  ADD COLUMN IF NOT EXISTS payout_phone TEXT,
+  ADD COLUMN IF NOT EXISTS payout_bank_details JSONB,
+  ADD COLUMN IF NOT EXISTS payout_method TEXT DEFAULT 'mpesa' CHECK (payout_method IN ('mpesa', 'bank')),
+  ADD COLUMN IF NOT EXISTS account_balance DECIMAL(15,2) DEFAULT 0.00,
+  ADD COLUMN IF NOT EXISTS reserved_balance DECIMAL(15,2) DEFAULT 0.00,
+  ADD COLUMN IF NOT EXISTS minimum_payout_amount DECIMAL(10,2) DEFAULT 100.00,
+  ADD COLUMN IF NOT EXISTS auto_payout_enabled BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS auto_payout_threshold DECIMAL(10,2) DEFAULT 5000.00;
 
 -- Drop existing platform_wallets table if it exists and recreate with proper structure
 DROP TABLE IF EXISTS platform_wallets CASCADE;
@@ -96,6 +95,7 @@ CREATE TABLE payment_transactions (
   initiated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   completed_at TIMESTAMP WITH TIME ZONE,
   failed_at TIMESTAMP WITH TIME ZONE,
+  expires_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + INTERVAL '30 minutes'),
   
   -- Error handling
   error_message TEXT,
@@ -127,43 +127,15 @@ CREATE POLICY "Store owners can only see their payment transactions" ON payment_
 ALTER TABLE payment_transactions ENABLE ROW LEVEL SECURITY;
 
 -- Enable real-time for payment status updates
-ALTER PUBLICATION supabase_realtime ADD TABLE payment_transactions;
-
--- Ledger Entries Table
-CREATE TABLE ledger_entries (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
-  transaction_type TEXT NOT NULL CHECK (
-    transaction_type IN ('sale', 'payout', 'fee', 'refund', 'adjustment')
-  ),
-  transaction_reference TEXT, -- Order ID, Payout ID, etc.
-  amount DECIMAL(15,2) NOT NULL,
-  currency TEXT NOT NULL DEFAULT 'KES',
-  balance_before DECIMAL(15,2) NOT NULL,
-  balance_after DECIMAL(15,2) NOT NULL,
-  description TEXT,
-  metadata JSONB DEFAULT '{}',
-  payment_transaction_id UUID REFERENCES payment_transactions(id),
-  payout_request_id UUID REFERENCES payout_requests(id),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  created_by UUID REFERENCES auth.users(id)
-);
-
--- Index for efficient balance queries
-CREATE INDEX idx_ledger_entries_store_id_created_at ON ledger_entries(store_id, created_at DESC);
-CREATE INDEX idx_ledger_entries_transaction_type ON ledger_entries(transaction_type);
-
--- RLS Policy
-CREATE POLICY "Store owners can only see their ledger entries" ON ledger_entries
-  FOR ALL USING (
-    store_id IN (
-      SELECT id FROM stores WHERE user_id = auth.uid()
-    )
-  );
-
--- Enable RLS and real-time
-ALTER TABLE ledger_entries ENABLE ROW LEVEL SECURITY;
-ALTER PUBLICATION supabase_realtime ADD TABLE ledger_entries;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'payment_transactions'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE payment_transactions;
+  END IF;
+END $$;
 
 -- Payout Requests Table
 CREATE TABLE payout_requests (
@@ -222,8 +194,59 @@ CREATE POLICY "Store owners can only see their payout requests" ON payout_reques
 
 -- Enable RLS and real-time
 ALTER TABLE payout_requests ENABLE ROW LEVEL SECURITY;
-ALTER PUBLICATION supabase_realtime ADD TABLE payout_requests;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'payout_requests'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE payout_requests;
+  END IF;
+END $$;
 
+-- Ledger Entries Table
+CREATE TABLE ledger_entries (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  store_id UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  transaction_type TEXT NOT NULL CHECK (
+    transaction_type IN ('sale', 'payout', 'fee', 'refund', 'adjustment')
+  ),
+  transaction_reference TEXT, -- Order ID, Payout ID, etc.
+  amount DECIMAL(15,2) NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'KES',
+  balance_before DECIMAL(15,2) NOT NULL,
+  balance_after DECIMAL(15,2) NOT NULL,
+  description TEXT,
+  metadata JSONB DEFAULT '{}',
+  payment_transaction_id UUID REFERENCES payment_transactions(id),
+  payout_request_id UUID REFERENCES payout_requests(id),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  created_by UUID REFERENCES auth.users(id)
+);
+
+-- Index for efficient balance queries
+CREATE INDEX idx_ledger_entries_store_id_created_at ON ledger_entries(store_id, created_at DESC);
+CREATE INDEX idx_ledger_entries_transaction_type ON ledger_entries(transaction_type);
+
+-- RLS Policy
+CREATE POLICY "Store owners can only see their ledger entries" ON ledger_entries
+  FOR ALL USING (
+    store_id IN (
+      SELECT id FROM stores WHERE user_id = auth.uid()
+    )
+  );
+
+-- Enable RLS and real-time
+ALTER TABLE ledger_entries ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'ledger_entries'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE ledger_entries;
+  END IF;
+END $$;
 -- Swypt Transaction Log Table
 CREATE TABLE swypt_transaction_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -265,12 +288,11 @@ ALTER TABLE swypt_transaction_log ENABLE ROW LEVEL SECURITY;
 CREATE OR REPLACE FUNCTION get_optimal_platform_wallet(
   p_network TEXT,
   p_currency TEXT
-) RETURNS platform_wallets AS $$
-DECLARE
-  wallet_record platform_wallets;
+) RETURNS SETOF public.platform_wallets AS $$
 BEGIN
-  SELECT * INTO wallet_record
-  FROM platform_wallets
+  RETURN QUERY
+  SELECT *
+  FROM public.platform_wallets
   WHERE 
     network = p_network 
     AND currency_symbol = p_currency 
@@ -282,8 +304,6 @@ BEGIN
     total_transactions_today ASC,
     last_transaction_at ASC NULLS FIRST
   LIMIT 1;
-  
-  RETURN wallet_record;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -295,7 +315,7 @@ CREATE OR REPLACE FUNCTION update_store_balance(
   p_reference TEXT,
   p_description TEXT DEFAULT NULL,
   p_metadata JSONB DEFAULT '{}'
-) RETURNS JSON AS $$
+) RETURNS JSONB AS $$
 DECLARE
   current_balance DECIMAL(15,2);
   new_balance DECIMAL(15,2);
@@ -339,7 +359,7 @@ BEGIN
     auth.uid()
   ) RETURNING id INTO ledger_id;
   
-  RETURN json_build_object(
+  RETURN jsonb_build_object(
     'success', true,
     'previous_balance', current_balance,
     'new_balance', new_balance,
@@ -353,7 +373,7 @@ CREATE OR REPLACE FUNCTION update_wallet_stats(
   p_wallet_id UUID,
   p_transaction_amount DECIMAL(18,8),
   p_new_balance DECIMAL(18,8) DEFAULT NULL
-) RETURNS JSON AS $$
+) RETURNS JSONB AS $$
 BEGIN
   UPDATE platform_wallets
   SET
@@ -365,17 +385,17 @@ BEGIN
     updated_at = NOW()
   WHERE id = p_wallet_id;
   
-  RETURN json_build_object('success', true, 'wallet_id', p_wallet_id);
+  RETURN jsonb_build_object('success', true, 'wallet_id', p_wallet_id);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Function to get store financial summary
 CREATE OR REPLACE FUNCTION get_store_financial_summary(p_store_id UUID)
-RETURNS JSON AS $$
+RETURNS JSONB AS $$
 DECLARE
   result JSON;
 BEGIN
-  SELECT json_build_object(
+  SELECT jsonb_build_object(
     'current_balance', COALESCE(s.account_balance, 0),
     'reserved_balance', COALESCE(s.reserved_balance, 0),
     'total_lifetime_earnings', COALESCE(s.total_lifetime_earnings, 0),
@@ -400,14 +420,14 @@ BEGIN
     ),
     'recent_transactions', (
       SELECT COALESCE(json_agg(
-        json_build_object(
+        jsonb_build_object(
           'id', id,
           'type', transaction_type,
           'amount', amount,
           'description', description,
           'created_at', created_at
         ) ORDER BY created_at DESC
-      ), '[]'::json)
+      ), '[]'::jsonb)
       FROM ledger_entries
       WHERE store_id = p_store_id
       ORDER BY created_at DESC
@@ -423,10 +443,10 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Function to get platform wallets summary
 CREATE OR REPLACE FUNCTION get_platform_wallets_summary()
-RETURNS JSON AS $$
+RETURNS JSONB AS $$
 BEGIN
   RETURN (
-    SELECT json_build_object(
+    SELECT jsonb_build_object(
       'total_wallets', COUNT(*),
       'active_wallets', COUNT(*) FILTER (WHERE is_active = true),
       'wallets_by_network', json_object_agg(
@@ -461,10 +481,20 @@ CREATE TRIGGER update_platform_wallets_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_payment_transactions_updated_at
-  BEFORE UPDATE ON payment_transactions
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname = 'update_payment_transactions_updated_at'
+      AND tgrelid = 'public.payment_transactions'::regclass
+  ) THEN
+    EXECUTE 'CREATE TRIGGER update_payment_transactions_updated_at
+      BEFORE UPDATE ON public.payment_transactions
+      FOR EACH ROW
+      EXECUTE FUNCTION update_updated_at_column()';
+  END IF;
+END
+$$;
 
 CREATE TRIGGER update_payout_requests_updated_at
   BEFORE UPDATE ON payout_requests

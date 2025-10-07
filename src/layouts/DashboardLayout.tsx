@@ -30,6 +30,7 @@ import {
   DollarSign,
   Store,
   Menu,
+  MessageCircle,
 } from "lucide-react";
 import { OutletSelector } from "@/components/outlet-selector";
 
@@ -127,6 +128,26 @@ const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
                     <span>Outlets</span>
                   </Link>
                 </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton tooltip="WhatsApp">
+                  <MessageCircle className="h-4 w-4" />
+                  <span>WhatsApp</span>
+                  <ChevronDown className="ml-auto h-4 w-4" />
+                </SidebarMenuButton>
+                <SidebarMenuSub>
+                  <SidebarMenuSubItem>
+                    <SidebarMenuSubButton asChild>
+                      <Link to="/dashboard/whatsapp">Inbox</Link>
+                    </SidebarMenuSubButton>
+                  </SidebarMenuSubItem>
+                  <SidebarMenuSubItem>
+                    <SidebarMenuSubButton asChild>
+                      <Link to="/dashboard/whatsapp/analytics">Analytics</Link>
+                    </SidebarMenuSubButton>
+                  </SidebarMenuSubItem>
+                </SidebarMenuSub>
               </SidebarMenuItem>
 
               <SidebarMenuItem>

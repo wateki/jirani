@@ -83,6 +83,26 @@ CREATE TABLE IF NOT EXISTS public.payment_transactions (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Ensure columns exist when table was created by earlier migrations
+ALTER TABLE public.payment_transactions
+  ADD COLUMN IF NOT EXISTS customer_name TEXT,
+  ADD COLUMN IF NOT EXISTS swypt_quote_data JSONB DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS blockchain_confirmations INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'mpesa',
+  ADD COLUMN IF NOT EXISTS payment_provider TEXT DEFAULT 'swypt',
+  ADD COLUMN IF NOT EXISTS quote_requested_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS stk_initiated_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS stk_completed_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS crypto_processing_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS error_code TEXT,
+  ADD COLUMN IF NOT EXISTS last_retry_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS platform_fee DECIMAL(10,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS processing_fee DECIMAL(10,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS store_commission DECIMAL(10,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS net_amount DECIMAL(10,2),
+  ADD COLUMN IF NOT EXISTS payment_metadata JSONB DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS swypt_metadata JSONB DEFAULT '{}'::jsonb;
+
 -- Create indexes for performance
 CREATE INDEX IF NOT EXISTS payment_transactions_store_id_idx ON public.payment_transactions(store_id);
 CREATE INDEX IF NOT EXISTS payment_transactions_status_idx ON public.payment_transactions(status);
@@ -120,13 +140,34 @@ CREATE POLICY "Service role can manage payment transactions" ON public.payment_t
 ALTER TABLE public.payment_transactions ENABLE ROW LEVEL SECURITY;
 
 -- Enable real-time for payment status updates
-ALTER PUBLICATION supabase_realtime ADD TABLE public.payment_transactions;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime'
+      AND schemaname = 'public'
+      AND tablename = 'payment_transactions'
+  ) THEN
+    EXECUTE 'ALTER PUBLICATION supabase_realtime ADD TABLE public.payment_transactions';
+  END IF;
+END
+$$;
 
--- Add trigger for updated_at
-CREATE TRIGGER update_payment_transactions_updated_at
-    BEFORE UPDATE ON public.payment_transactions
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname = 'update_payment_transactions_updated_at'
+      AND tgrelid = 'public.payment_transactions'::regclass
+  ) THEN
+    EXECUTE 'CREATE TRIGGER update_payment_transactions_updated_at
+      BEFORE UPDATE ON public.payment_transactions
+      FOR EACH ROW
+      EXECUTE FUNCTION update_updated_at_column()';
+  END IF;
+END
+$$;
 
 -- Function to update payment status with automatic store balance updates
 CREATE OR REPLACE FUNCTION update_payment_status(

@@ -58,6 +58,21 @@ CREATE TABLE IF NOT EXISTS public.ledger_entries (
   approval_notes TEXT
 );
 
+-- Ensure columns exist when table was created by earlier migrations
+ALTER TABLE public.ledger_entries
+  ADD COLUMN IF NOT EXISTS external_reference TEXT,
+  ADD COLUMN IF NOT EXISTS description TEXT,
+  ADD COLUMN IF NOT EXISTS category TEXT,
+  ADD COLUMN IF NOT EXISTS balance_before DECIMAL(15,2),
+  ADD COLUMN IF NOT EXISTS balance_after DECIMAL(15,2),
+  ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES auth.users(id),
+  ADD COLUMN IF NOT EXISTS approved_by UUID REFERENCES auth.users(id),
+  ADD COLUMN IF NOT EXISTS is_reconciled BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS reconciled_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS reconciled_by UUID REFERENCES auth.users(id),
+  ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT ARRAY[]::TEXT[];
+
 -- Create indexes for efficient queries
 CREATE INDEX IF NOT EXISTS ledger_entries_store_id_created_at_idx ON public.ledger_entries(store_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS ledger_entries_transaction_type_idx ON public.ledger_entries(transaction_type);
@@ -95,8 +110,19 @@ CREATE POLICY "Service role can manage ledger entries" ON public.ledger_entries
 -- Enable RLS
 ALTER TABLE public.ledger_entries ENABLE ROW LEVEL SECURITY;
 
--- Enable real-time for ledger updates
-ALTER PUBLICATION supabase_realtime ADD TABLE public.ledger_entries;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime'
+      AND schemaname = 'public'
+      AND tablename = 'ledger_entries'
+  ) THEN
+    EXECUTE 'ALTER PUBLICATION supabase_realtime ADD TABLE public.ledger_entries';
+  END IF;
+END
+$$;
 
 -- Function to create a ledger entry (used by update_store_balance)
 CREATE OR REPLACE FUNCTION create_ledger_entry(
