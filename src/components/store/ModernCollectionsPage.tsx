@@ -142,6 +142,7 @@ const ProductCard = ({
 }) => {
   const { isFavorite, toggleFavorite } = useFavorites();
 
+
   if (viewMode === 'list') {
     return (
       <Link 
@@ -160,14 +161,20 @@ const ProductCard = ({
         {/* Product Info */}
         <div className="flex-1 ml-2 md:ml-3 flex flex-col justify-between">
           <div>
-            <h3 className="font-medium text-gray-900 mb-1 md:mb-2 text-sm md:text-base">{product.name}</h3>
+            <h3 className="font-medium text-gray-900 mb-1 md:mb-2 text-sm md:text-base">
+              {product.name || 'Unnamed Product'}
+            </h3>
+            
             <div className="hidden md:flex items-center space-x-1 mb-2">
               {[...Array(5)].map((_, i) => (
                 <Star key={i} className="h-3 w-3 fill-yellow-400 text-yellow-400" />
               ))}
               <span className="text-xs text-gray-500 ml-1">4.5/5</span>
             </div>
-            <p className="hidden md:block text-sm text-gray-600 line-clamp-2">{product.description}</p>
+            <p className="hidden md:block text-sm text-gray-600 line-clamp-2">
+              {product.description || 'No description available'}
+            </p>
+            
           </div>
           
           <div className="flex items-center justify-between mt-2 md:mt-4">
@@ -270,7 +277,7 @@ const ProductCard = ({
             className="text-xs md:text-sm font-medium"
             style={{ color: secondaryColor || '#6B7280' }}
           >
-            {product.category_id || 'Grande'}
+            {product.sku || 'Product'}
           </p>
           <Button
             variant="ghost"
@@ -289,7 +296,11 @@ const ProductCard = ({
         </div>
         
         {/* Product Name */}
-        <h3 className="text-xs md:text-sm text-gray-600 line-clamp-1">{product.name}</h3>
+        <h3 className="text-xs md:text-sm text-gray-600 line-clamp-1">
+          {product.name || 'Unnamed Product'}
+        </h3>
+        
+        
         
         {/* Star Rating - Hidden on mobile */}
         <div className="hidden md:flex items-center space-x-1">
@@ -625,6 +636,8 @@ const ModernCollectionsPage = ({ primaryColor, secondaryColor, storeName, storeS
         const { data: productsData, error: productsError } = await productsQuery;
         
         if (productsError) throw productsError;
+        
+        
         setProducts(productsData || []);
 
       } catch (error) {
