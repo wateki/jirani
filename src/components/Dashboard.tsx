@@ -114,7 +114,7 @@ const Dashboard = () => {
         // Build orders query - apply outlet filter only if outlet is selected
         let ordersQuery = supabase
           .from('orders')
-          .select('*, customer:customer_id(*)')
+          .select('*')
           .eq('store_id', storeId); // Always filter by store_id first for RLS
         
         // Only add outlet filter if an outlet is specifically selected
@@ -140,7 +140,9 @@ const Dashboard = () => {
         
         console.log('Dashboard Debug - Total revenue calculated:', totalRevenue);
 
-        const uniqueCustomers = new Set(ordersData?.map(order => order.customer_id).filter(Boolean) || []);
+        const uniqueCustomers = new Set(
+          (ordersData || []).map(order => order.customer_email || order.customer_phone || order.customer_name).filter(Boolean)
+        );
 
         // Get low stock items - secured by store_id filter
         const { data: lowStockItems, error: lowStockError } = await supabase

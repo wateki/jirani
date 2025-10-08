@@ -1,0 +1,27 @@
+-- Frontend Fix: Remove hardcoded fashion-specific fallback values
+-- This backup documents the frontend changes made to fix hardcoded "FIND CLOTHES THAT MATCHES YOUR STYLE" 
+-- fallback values in store preview components.
+
+-- CHANGES MADE TO FRONTEND:
+-- File: src/components/store/StoreCollectionsPage.tsx
+-- 
+-- BEFORE (lines 81, 90):
+-- {heroHeading || "FIND CLOTHES THAT MATCHES YOUR STYLE"}
+-- {heroSubheading || "Browse through our diverse range of meticulously crafted garments, designed to bring out your individuality and cater to your sense of style."}
+--
+-- AFTER:
+-- {heroHeading || "Welcome to Our Store"}
+-- {heroSubheading || "Discover amazing products and services tailored just for you."}
+--
+-- REASON: The hardcoded fallback values were fashion/clothing specific and not relevant 
+-- for other business types like supermarkets, electronics, restaurants, etc.
+--
+-- SOLUTION: Updated fallback values to be generic and business-type agnostic.
+-- The proper business-type specific content now comes from the database templates
+-- via the hero_heading and hero_subheading fields in store_settings table.
+
+-- This ensures that:
+-- 1. New stores automatically get relevant content from their business type templates
+-- 2. Existing stores have been backfilled with appropriate content
+-- 3. Fallback values are generic and work for any business type
+-- 4. The store preview shows relevant content instead of fashion-specific text

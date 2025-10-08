@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { safeJsonParse } from "@/utils/store";
 import { 
   Star,
   Filter,
@@ -732,7 +733,7 @@ const ModernCollectionsPage = ({ primaryColor, secondaryColor, storeName, storeS
       {/* Campaign Banner */}
       {fetchedStoreSettings?.enable_campaigns && fetchedStoreSettings?.custom_campaigns && (
         <CampaignBanner 
-          campaigns={JSON.parse(fetchedStoreSettings.custom_campaigns as string)}
+          campaigns={safeJsonParse(fetchedStoreSettings.custom_campaigns, [])}
           rotationSpeed={fetchedStoreSettings.campaign_rotation_speed || 5}
           isPreview={false}
         />

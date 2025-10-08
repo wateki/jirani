@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { safeJsonParse } from "@/utils/store";
 import { 
   Star,
   ArrowRight,
@@ -321,14 +322,14 @@ const ModernStorePage = ({ primaryColor, secondaryColor, storeName, storeSetting
     autoScrollSpeed: storeSettings?.hero_auto_scroll_speed || 10,
     backgroundImage: storeSettings?.hero_background_image || '',
     backgroundOpacity: storeSettings?.hero_background_opacity || 50,
-    slides: storeSettings?.hero_slides ? JSON.parse(storeSettings.hero_slides as string) : [],
+    slides: safeJsonParse(storeSettings?.hero_slides, []),
     
     // Campaigns
     enableCampaigns: storeSettings?.enable_campaigns || false,
     campaignRotationSpeed: storeSettings?.campaign_rotation_speed || 5,
     campaignBackgroundImage: storeSettings?.campaign_background_image || '',
     campaignBackgroundOpacity: storeSettings?.campaign_background_opacity || 50,
-    customCampaigns: storeSettings?.custom_campaigns ? JSON.parse(storeSettings.custom_campaigns as string) : []
+    customCampaigns: safeJsonParse(storeSettings?.custom_campaigns, [])
   };
 
   return (

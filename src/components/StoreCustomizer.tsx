@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/components/ui/use-toast";
 import { Database } from "@/integrations/supabase/types";
 import { uploadStoreLogo, uploadStoreBanner } from "@/utils/storage";
+import { safeJsonParse } from "@/utils/store";
 import getEnvironmentConfig, { generateStoreUrl } from "../config/environment";
 import StoreCustomizationPanel from "./StoreCustomizationPanel";
 import StorePreviewContainer from "./StorePreviewContainer";
@@ -124,7 +125,7 @@ const StoreCustomizer = () => {
         setCampaigns({
           enableCampaigns: data.enable_campaigns || false,
           campaignRotationSpeed: data.campaign_rotation_speed || 5,
-          customCampaigns: data.custom_campaigns ? JSON.parse(data.custom_campaigns as string) : [],
+          customCampaigns: safeJsonParse(data.custom_campaigns, []),
           backgroundImage: data.campaign_background_image || null,
           backgroundOpacity: (data.campaign_background_opacity || 50) / 100, // Convert to decimal
         });
@@ -133,7 +134,7 @@ const StoreCustomizer = () => {
         setHeroCarousel({
           enableCarousel: data.enable_hero_carousel || false,
           autoScrollSpeed: data.hero_auto_scroll_speed || 10,
-          slides: data.hero_slides ? JSON.parse(data.hero_slides as string) : [],
+          slides: safeJsonParse(data.hero_slides, []),
           backgroundImage: data.hero_background_image || null,
           backgroundOpacity: (data.hero_background_opacity || 50) / 100, // Convert to decimal
         });

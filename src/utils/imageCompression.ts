@@ -10,6 +10,7 @@ export interface CompressionOptions {
   format?: 'jpeg' | 'webp' | 'png';
   maxSizeKB?: number;
   enableProgressive?: boolean;
+  whatsappCompatible?: boolean; // New option for WhatsApp compatibility
 }
 
 export interface CompressionResult {
@@ -24,50 +25,65 @@ export interface CompressionResult {
  * Default compression settings optimized for different use cases
  */
 export const COMPRESSION_PRESETS = {
-  // For product images - high quality
+  // For product images - high quality, WhatsApp compatible
   PRODUCT: {
     maxWidth: 1200,
     maxHeight: 1200,
     quality: 0.85,
-    format: 'webp' as const,
+    format: 'png' as const,
     maxSizeKB: 500,
-    enableProgressive: true
+    enableProgressive: true,
+    whatsappCompatible: true
   },
-  // For collection/category images - medium quality
+  // For collection/category images - medium quality, WhatsApp compatible
   COLLECTION: {
     maxWidth: 800,
     maxHeight: 600,
     quality: 0.80,
-    format: 'webp' as const,
+    format: 'png' as const,
     maxSizeKB: 300,
-    enableProgressive: true
+    enableProgressive: true,
+    whatsappCompatible: true
   },
-  // For thumbnails - smaller size
+  // For thumbnails - smaller size, WhatsApp compatible
   THUMBNAIL: {
     maxWidth: 400,
     maxHeight: 400,
     quality: 0.75,
-    format: 'webp' as const,
+    format: 'png' as const,
     maxSizeKB: 100,
-    enableProgressive: false
+    enableProgressive: false,
+    whatsappCompatible: true
   },
-  // For hero/banner images - larger but compressed
+  // For hero/banner images - larger but compressed, WhatsApp compatible
   HERO: {
     maxWidth: 1920,
     maxHeight: 1080,
     quality: 0.80,
-    format: 'webp' as const,
+    format: 'png' as const,
     maxSizeKB: 800,
-    enableProgressive: true
+    enableProgressive: true,
+    whatsappCompatible: true
   },
-  // For logos - maintain quality
+  // For logos - maintain quality, WhatsApp compatible
   LOGO: {
     maxWidth: 500,
     maxHeight: 500,
     quality: 0.90,
     format: 'png' as const,
     maxSizeKB: 200,
-    enableProgressive: false
+    enableProgressive: false,
+    whatsappCompatible: true
+  },
+  // WhatsApp specific preset - optimized for WhatsApp API
+  WHATSAPP: {
+    maxWidth: 1024,
+    maxHeight: 1024,
+    quality: 0.85,
+    format: 'png' as const,
+    maxSizeKB: 5000, // 5MB limit for WhatsApp
+    enableProgressive: false,
+    whatsappCompatible: true
   }
 };
 
@@ -173,9 +189,23 @@ async function compressWithMultiplePasses(
 }
 
 /**
- * Smart format selection based on image content
+ * Smart format selection based on image content and WhatsApp compatibility
  */
-async function selectOptimalFormat(file: File): Promise<'jpeg' | 'webp' | 'png'> {
+async function selectOptimalFormat(file: File, whatsappCompatible: boolean = false): Promise<'jpeg' | 'webp' | 'png'> {
+  // If WhatsApp compatible is required, prioritize PNG/JPEG
+  if (whatsappCompatible) {
+    const originalFormat = file.type.split('/')[1].toLowerCase();
+    
+    // For images with transparency, use PNG
+    if (originalFormat === 'png' || originalFormat === 'gif') {
+      return 'png';
+    }
+    
+    // For photos, use JPEG for better compression
+    return 'jpeg';
+  }
+  
+  // Original logic for non-WhatsApp use cases
   const supportsWebPFormat = await supportsWebP();
   
   // Always prefer WebP if supported (better compression)
@@ -209,7 +239,7 @@ export async function compressImage(
   
   // Select optimal format if not specified
   if (!options.format) {
-    options.format = await selectOptimalFormat(file);
+    options.format = await selectOptimalFormat(file, options.whatsappCompatible);
   }
   
   // Apply compression
@@ -276,4 +306,41 @@ export function getCompressionStats(result: CompressionResult): string {
   const savedPercentage = Math.round(result.compressionRatio * 100);
   
   return `Saved ${formatFileSize(savedBytes)} (${savedPercentage}%)`;
+}
+
+/**
+ * Compress image specifically for WhatsApp compatibility
+ * Ensures output is in PNG or JPEG format with optimal settings
+ */
+export async function compressImageForWhatsApp(
+  file: File,
+  options: Partial<CompressionOptions> = {}
+): Promise<CompressionResult> {
+  const whatsappOptions: CompressionOptions = {
+    ...COMPRESSION_PRESETS.WHATSAPP,
+    ...options,
+    whatsappCompatible: true
+  };
+  
+  return compressImage(file, whatsappOptions);
+}
+
+/**
+ * Convert WebP images to WhatsApp-compatible format
+ * Useful for converting stored WebP images to PNG/JPEG for WhatsApp
+ */
+export async function convertWebPForWhatsApp(
+  file: File,
+  options: Partial<CompressionOptions> = {}
+): Promise<CompressionResult> {
+  // Force PNG format for WebP conversion to maintain quality
+  const conversionOptions: CompressionOptions = {
+    ...COMPRESSION_PRESETS.WHATSAPP,
+    format: 'png',
+    quality: 0.90, // Higher quality for conversion
+    ...options,
+    whatsappCompatible: true
+  };
+  
+  return compressImage(file, conversionOptions);
 } 

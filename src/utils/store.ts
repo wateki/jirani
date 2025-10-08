@@ -2,6 +2,31 @@ import { supabase } from "@/integrations/supabase/client";
 import { BusinessType, StoreTemplate, TemplateConfig } from "@/types/database";
 
 /**
+ * Safely parses JSON data, handling various edge cases
+ * @param data The data to parse (string, object, or null/undefined)
+ * @param fallback The fallback value if parsing fails (default: [])
+ * @returns Parsed data or fallback value
+ */
+export function safeJsonParse<T = any>(data: any, fallback: T = [] as T): T {
+  if (!data) return fallback;
+  
+  if (typeof data === 'object') {
+    return data;
+  }
+  
+  if (typeof data === 'string') {
+    try {
+      return JSON.parse(data);
+    } catch (e) {
+      console.warn('Failed to parse JSON data:', e, 'Data:', data);
+      return fallback;
+    }
+  }
+  
+  return fallback;
+}
+
+/**
  * Fetches the store ID for the current authenticated user
  * @returns The user's store ID or null if not found
  */
@@ -59,9 +84,7 @@ export async function createStoreWithTemplate(
         .single();
       
       if (!templateError && template) {
-        templateConfig = typeof template.template_config === "string"
-          ? JSON.parse(template.template_config)
-          : template.template_config;
+        templateConfig = safeJsonParse(template.template_config);
       }
     }
     
