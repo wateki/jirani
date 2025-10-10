@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Link, useNavigate } from "react-router-dom";
-import { ShoppingBag, User, Mail, Lock, Check, ArrowLeft, ArrowRight } from "lucide-react";
+import { ShoppingBag, User, Mail, Lock, Check, ArrowLeft, ArrowRight, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { BusinessType, StoreTemplate, RegistrationData } from "@/types/database";
@@ -23,6 +23,7 @@ const SignupPage = () => {
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [successMessage, setSuccessMessage] = useState<string>("");
   const [registrationFinished, setRegistrationFinished] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const { signUpEnhanced, session } = useAuth();
   const navigate = useNavigate();
 
@@ -39,6 +40,16 @@ const SignupPage = () => {
 
   const totalSteps = 5;
   const progress = (currentStep / totalSteps) * 100;
+
+  // Generate slug from business name (same logic as BusinessDetailsStep)
+  const generateSlug = (name: string) => {
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '') // Remove special characters
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .replace(/-+/g, '-') // Replace multiple hyphens with single
+      .trim();
+  };
 
   // Use useEffect for redirection
   useEffect(() => {
@@ -162,11 +173,15 @@ const SignupPage = () => {
     try {
       // Create the store now (final step), owned by the authenticated user
       if (session?.user) {
+        // Generate the store slug from business name
+        const storeSlug = generateSlug(registrationData.businessName);
+        
         const { error } = await supabase
           .from('store_settings')
           .insert({
             user_id: session.user.id,
             store_name: registrationData.businessName,
+            store_slug: storeSlug,
             business_type_id: registrationData.businessType?.id,
             template_id: registrationData.template?.id,
             is_published: false,
@@ -289,13 +304,25 @@ const SignupPage = () => {
                 <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input 
                   id="password" 
-                  type="password" 
+                  type={showPassword ? "text" : "password"}
                   placeholder="••••••••" 
                   value={registrationData.password}
                   onChange={(e) => handleStepData({ password: e.target.value })}
-                  className="pl-10"
+                  className="pl-10 pr-10"
                   required
                 />
+                <button
+                  type="button"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
               </div>
               <p className="text-xs text-gray-500">
                 Must be at least 8 characters and include a number and a special character

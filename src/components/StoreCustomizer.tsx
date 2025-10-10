@@ -294,7 +294,7 @@ const StoreCustomizer = () => {
           return;
       }
       
-      // Prepare data for database
+      // Prepare data for store_settings table
       const storeData: StoreSettingsInsert = {
         ...(storeId && { id: storeId }), // Include ID if updating existing store
         user_id: user.id,
@@ -324,14 +324,57 @@ const StoreCustomizer = () => {
         updated_at: new Date().toISOString(),
       };
 
-      const { error } = await supabase
+      // Update store_settings table
+      const { error: storeSettingsError } = await supabase
         .from('store_settings')
         .upsert(storeData, {
           onConflict: 'id'
         });
 
-      if (error) {
-        throw error;
+      if (storeSettingsError) {
+        throw storeSettingsError;
+      }
+
+      // Also update the stores table to keep store name in sync
+      // First, check if a corresponding stores record exists
+      const { data: existingStoresRecord } = await supabase
+        .from('stores')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (existingStoresRecord) {
+        // Update existing stores record
+        const { error: storesUpdateError } = await supabase
+          .from('stores')
+          .update({
+            name: storeInfo.storeName,
+            description: storeInfo.description,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('user_id', user.id);
+
+        if (storesUpdateError) {
+          console.warn('Warning: Failed to update stores table:', storesUpdateError);
+          // Don't throw error here as store_settings was successful
+        }
+      } else {
+        // Create new stores record to maintain 1:1 relationship
+        const { error: storesInsertError } = await supabase
+          .from('stores')
+          .insert({
+            user_id: user.id,
+            name: storeInfo.storeName,
+            description: storeInfo.description,
+            business_type: 'individual', // Default value
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+
+        if (storesInsertError) {
+          console.warn('Warning: Failed to create stores record:', storesInsertError);
+          // Don't throw error here as store_settings was successful
+        }
       }
       
       toast({
@@ -363,10 +406,10 @@ const StoreCustomizer = () => {
 
     setPublishing(true);
     try {
-      // First save the current settings
+      // First save the current settings (this will sync both tables)
       await handleSaveSettings();
       
-      // Then mark as published
+      // Then mark as published in store_settings
       const storeSlug = derivedStoreSlug;
       
       const { error } = await supabase
