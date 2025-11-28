@@ -88,6 +88,43 @@ CREATE TABLE IF NOT EXISTS public.payout_requests (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Ensure columns exist when table was created by earlier migrations
+ALTER TABLE public.payout_requests
+  ADD COLUMN IF NOT EXISTS swypt_quote_id TEXT,
+  ADD COLUMN IF NOT EXISTS swypt_quote_data JSONB DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS blockchain_hash TEXT,
+  ADD COLUMN IF NOT EXISTS blockchain_network TEXT,
+  ADD COLUMN IF NOT EXISTS crypto_amount DECIMAL(18,8),
+  ADD COLUMN IF NOT EXISTS crypto_currency TEXT,
+  ADD COLUMN IF NOT EXISTS exchange_rate DECIMAL(10,6),
+  ADD COLUMN IF NOT EXISTS platform_wallet_id UUID REFERENCES public.platform_wallets(id),
+  ADD COLUMN IF NOT EXISTS amount_final DECIMAL(10,2),
+  ADD COLUMN IF NOT EXISTS quote_requested_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS crypto_withdrawn_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS offramp_started_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS failed_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '24 hours'),
+  ADD COLUMN IF NOT EXISTS approved_by UUID REFERENCES auth.users(id),
+  ADD COLUMN IF NOT EXISTS rejected_by UUID REFERENCES auth.users(id),
+  ADD COLUMN IF NOT EXISTS rejection_reason TEXT,
+  ADD COLUMN IF NOT EXISTS admin_notes TEXT,
+  ADD COLUMN IF NOT EXISTS auto_approved BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS processing_fee DECIMAL(10,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS platform_fee DECIMAL(10,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS offramp_fee DECIMAL(10,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS error_message TEXT,
+  ADD COLUMN IF NOT EXISTS error_code TEXT,
+  ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS max_retries INTEGER DEFAULT 3,
+  ADD COLUMN IF NOT EXISTS last_retry_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS scheduled_for TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS request_metadata JSONB DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS swypt_metadata JSONB DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS processing_metadata JSONB DEFAULT '{}'::jsonb;
+
 -- Create indexes for performance and queries
 CREATE INDEX IF NOT EXISTS payout_requests_store_id_idx ON public.payout_requests(store_id);
 CREATE INDEX IF NOT EXISTS payout_requests_status_idx ON public.payout_requests(status);
@@ -100,48 +137,104 @@ CREATE INDEX IF NOT EXISTS payout_requests_priority_scheduled_idx ON public.payo
 
 -- RLS Policies
 -- Store owners can view and create their own payout requests
-CREATE POLICY "Store owners can manage their payout requests" ON public.payout_requests
-  FOR ALL USING (
-    store_id IN (
-      SELECT id FROM public.store_settings WHERE user_id = auth.uid()
-    )
-  );
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'payout_requests'
+      AND policyname = 'Store owners can manage their payout requests'
+  ) THEN
+    EXECUTE 'CREATE POLICY "Store owners can manage their payout requests" ON public.payout_requests
+      FOR ALL USING (
+        store_id IN (
+          SELECT id FROM public.store_settings WHERE user_id = auth.uid()
+        )
+      )';
+  END IF;
+END $$;
 
 -- Store owners can only insert their own requests
-CREATE POLICY "Store owners can create payout requests" ON public.payout_requests
-  FOR INSERT WITH CHECK (
-    store_id IN (
-      SELECT id FROM public.store_settings WHERE user_id = auth.uid()
-    )
-  );
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'payout_requests'
+      AND policyname = 'Store owners can create payout requests'
+  ) THEN
+    EXECUTE 'CREATE POLICY "Store owners can create payout requests" ON public.payout_requests
+      FOR INSERT WITH CHECK (
+        store_id IN (
+          SELECT id FROM public.store_settings WHERE user_id = auth.uid()
+        )
+      )';
+  END IF;
+END $$;
 
 -- Platform admins can manage all payout requests
-CREATE POLICY "Platform admins can manage all payout requests" ON public.payout_requests
-  FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM auth.users 
-      WHERE auth.users.id = auth.uid() 
-      AND auth.users.raw_app_meta_data->>'role' = 'platform_admin'
-    )
-  );
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'payout_requests'
+      AND policyname = 'Platform admins can manage all payout requests'
+  ) THEN
+    EXECUTE 'CREATE POLICY "Platform admins can manage all payout requests" ON public.payout_requests
+      FOR ALL USING (
+        EXISTS (
+          SELECT 1 FROM auth.users 
+          WHERE auth.users.id = auth.uid() 
+          AND auth.users.raw_app_meta_data->>''role'' = ''platform_admin''
+        )
+      )';
+  END IF;
+END $$;
 
 -- Service role can manage all requests (for automated processing)
-CREATE POLICY "Service role can manage payout requests" ON public.payout_requests
-  FOR ALL USING (
-    auth.role() = 'service_role'
-  );
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'payout_requests'
+      AND policyname = 'Service role can manage payout requests'
+  ) THEN
+    EXECUTE 'CREATE POLICY "Service role can manage payout requests" ON public.payout_requests
+      FOR ALL USING (
+        auth.role() = ''service_role''
+      )';
+  END IF;
+END $$;
 
 -- Enable RLS
 ALTER TABLE public.payout_requests ENABLE ROW LEVEL SECURITY;
 
--- Enable real-time for payout status updates
-ALTER PUBLICATION supabase_realtime ADD TABLE public.payout_requests;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime'
+      AND schemaname = 'public'
+      AND tablename = 'payout_requests'
+  ) THEN
+    EXECUTE 'ALTER PUBLICATION supabase_realtime ADD TABLE public.payout_requests';
+  END IF;
+END
+$$;
 
--- Add trigger for updated_at
-CREATE TRIGGER update_payout_requests_updated_at
-    BEFORE UPDATE ON public.payout_requests
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname = 'update_payout_requests_updated_at'
+      AND tgrelid = 'public.payout_requests'::regclass
+  ) THEN
+    EXECUTE 'CREATE TRIGGER update_payout_requests_updated_at
+      BEFORE UPDATE ON public.payout_requests
+      FOR EACH ROW
+      EXECUTE FUNCTION update_updated_at_column()';
+  END IF;
+END
+$$;
 
 -- Function to create a payout request
 CREATE OR REPLACE FUNCTION create_payout_request(

@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS public.swypt_transaction_log (
   -- Request context
   edge_function_request_id TEXT, -- Supabase Edge Function request ID
   user_id UUID REFERENCES auth.users(id), -- User who initiated the request
-  store_id UUID REFERENCES public.stores(id),
+  store_id UUID REFERENCES public.store_settings(id),
   ip_address INET,
   user_agent TEXT,
   
@@ -71,6 +71,35 @@ CREATE TABLE IF NOT EXISTS public.swypt_transaction_log (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Ensure columns exist when table was created by earlier migrations
+ALTER TABLE public.swypt_transaction_log
+  ADD COLUMN IF NOT EXISTS swypt_order_id TEXT,
+  ADD COLUMN IF NOT EXISTS swypt_quote_id TEXT,
+  ADD COLUMN IF NOT EXISTS request_headers JSONB DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS response_headers JSONB DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS http_status_code INTEGER,
+  ADD COLUMN IF NOT EXISTS response_time_ms INTEGER,
+  ADD COLUMN IF NOT EXISTS success BOOLEAN,
+  ADD COLUMN IF NOT EXISTS error_message TEXT,
+  ADD COLUMN IF NOT EXISTS error_code TEXT,
+  ADD COLUMN IF NOT EXISTS related_payment_id UUID REFERENCES public.payment_transactions(id),
+  ADD COLUMN IF NOT EXISTS related_payout_id UUID REFERENCES public.payout_requests(id),
+  ADD COLUMN IF NOT EXISTS platform_wallet_id UUID REFERENCES public.platform_wallets(id),
+  ADD COLUMN IF NOT EXISTS edge_function_request_id TEXT,
+  ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id),
+  ADD COLUMN IF NOT EXISTS store_id UUID REFERENCES public.store_settings(id),
+  ADD COLUMN IF NOT EXISTS ip_address INET,
+  ADD COLUMN IF NOT EXISTS user_agent TEXT,
+  ADD COLUMN IF NOT EXISTS is_retry BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS retry_of_log_id UUID REFERENCES public.swypt_transaction_log(id),
+  ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS is_sensitive BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS retention_until TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '7 years'),
+  ADD COLUMN IF NOT EXISTS environment TEXT DEFAULT 'production' CHECK (environment IN ('production', 'staging', 'development')),
+  ADD COLUMN IF NOT EXISTS api_version TEXT,
+  ADD COLUMN IF NOT EXISTS request_metadata JSONB DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS response_metadata JSONB DEFAULT '{}'::jsonb;
+
 -- Create indexes for performance and monitoring
 CREATE INDEX IF NOT EXISTS swypt_log_transaction_type_idx ON public.swypt_transaction_log(transaction_type);
 CREATE INDEX IF NOT EXISTS swypt_log_swypt_order_id_idx ON public.swypt_transaction_log(swypt_order_id);
@@ -86,28 +115,55 @@ CREATE INDEX IF NOT EXISTS swypt_log_retention_until_idx ON public.swypt_transac
 
 -- RLS Policies
 -- Platform admins can see all logs
-CREATE POLICY "Platform admins can view all swypt logs" ON public.swypt_transaction_log
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM auth.users 
-      WHERE auth.users.id = auth.uid() 
-      AND auth.users.raw_app_meta_data->>'role' = 'platform_admin'
-    )
-  );
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'swypt_transaction_log'
+      AND policyname = 'Platform admins can view all swypt logs'
+  ) THEN
+    EXECUTE 'CREATE POLICY "Platform admins can view all swypt logs" ON public.swypt_transaction_log
+      FOR SELECT USING (
+        EXISTS (
+          SELECT 1 FROM auth.users 
+          WHERE auth.users.id = auth.uid() 
+          AND auth.users.raw_app_meta_data->>''role'' = ''platform_admin''
+        )
+      )';
+  END IF;
+END $$;
 
 -- Store owners can see logs related to their transactions
-CREATE POLICY "Store owners can view their transaction logs" ON public.swypt_transaction_log
-  FOR SELECT USING (
-    store_id IN (
-      SELECT id FROM public.stores WHERE user_id = auth.uid()
-    )
-  );
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'swypt_transaction_log'
+      AND policyname = 'Store owners can view their transaction logs'
+  ) THEN
+    EXECUTE 'CREATE POLICY "Store owners can view their transaction logs" ON public.swypt_transaction_log
+      FOR SELECT USING (
+        store_id IN (
+          SELECT id FROM public.store_settings WHERE user_id = auth.uid()
+        )
+      )';
+  END IF;
+END $$;
 
 -- Service role can manage all logs (for Edge Functions)
-CREATE POLICY "Service role can manage swypt logs" ON public.swypt_transaction_log
-  FOR ALL USING (
-    auth.role() = 'service_role'
-  );
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'swypt_transaction_log'
+      AND policyname = 'Service role can manage swypt logs'
+  ) THEN
+    EXECUTE 'CREATE POLICY "Service role can manage swypt logs" ON public.swypt_transaction_log
+      FOR ALL USING (
+        auth.role() = ''service_role''
+      )';
+  END IF;
+END $$;
 
 -- Enable RLS
 ALTER TABLE public.swypt_transaction_log ENABLE ROW LEVEL SECURITY;

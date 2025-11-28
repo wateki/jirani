@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
-import { createStore, createStoreWithTemplate, completeEnhancedRegistration } from "@/utils/store";
+import { createStore, createStoreWithTemplate, completeEnhancedRegistration, linkStoreToUser } from "@/utils/store";
 import { BusinessType, StoreTemplate } from "@/types/database";
 import { log } from "console";
 
@@ -39,10 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       (event, currentSession) => {
         console.log("event", event);
         console.log("currentSession", currentSession);
-        if (event === 'SIGNED_IN') {
-          // When user signs in, ensure they have a store
-          ensureUserHasStore(currentSession?.user);
-        }
+        // No automatic store creation on sign in
         
         setSession(currentSession);
         setUser(currentSession?.user ?? null);
@@ -53,43 +50,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
-      
-      // If user is already logged in, ensure they have a store
-      if (currentSession?.user) {
-        ensureUserHasStore(currentSession.user);
-      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // Function to ensure user has a store
-  const ensureUserHasStore = async (user: User | null | undefined) => {
-    if (!user) return;
-    
-    try {
-      // Check if user already has a store
-      const { data, error } = await supabase
-        .from('store_settings')
-        .select('id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      
-      if (error) {
-        console.error("Error checking for existing store:", error);
-        return;
-      }
-      
-      // If no store exists, create one
-      if (!data) {
-        // Get business name from user metadata if available
-        const businessName = user.user_metadata?.business_name || "My Store";
-        await createStore(user.id, businessName);
-      }
-    } catch (error) {
-      console.error("Error ensuring user has store:", error);
-    }
-  };
+  // No auto store creation helpers in the new flow
 
   const signIn = async (email: string, password: string) => {
     try {
@@ -123,11 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (signUpError) throw signUpError;
       
-      // If user is created and auto-confirmed (e.g., in development)
-      if (data?.user) {
-        // Create a store for the new user
-        await createStore(data.user.id, businessName);
-      }
+      // Store will be created later during onboarding finalization
 
       toast({
         title: "Account created!",
@@ -163,22 +125,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (signUpError) throw signUpError;
       
-      // If user is created and auto-confirmed (e.g., in development)
-      if (data?.user) {
-        // Create an enhanced store with business type and template
-        const result = await completeEnhancedRegistration({
-          userId: data.user.id,
-          name: registrationData.name,
-          businessName: registrationData.businessName,
-          businessType: registrationData.businessType,
-          template: registrationData.template,
-        });
-        
-        if (!result.success) {
-          
-          throw new Error("Failed to create store with template");
-        }
-      }
+      // Store will be created at the final step of onboarding
 
       toast({
         title: "Account created!",

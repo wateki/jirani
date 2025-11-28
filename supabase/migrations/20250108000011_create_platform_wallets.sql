@@ -47,24 +47,48 @@ CREATE INDEX IF NOT EXISTS platform_wallets_is_primary_idx ON public.platform_wa
 CREATE INDEX IF NOT EXISTS platform_wallets_token_address_idx ON public.platform_wallets(token_address);
 CREATE INDEX IF NOT EXISTS platform_wallets_wallet_address_idx ON public.platform_wallets(wallet_address);
 
--- RLS: Only platform admins can access wallet information
-CREATE POLICY "Only platform admins can access wallets" ON public.platform_wallets
-  FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM auth.users 
-      WHERE auth.users.id = auth.uid() 
-      AND auth.users.raw_app_meta_data->>'role' = 'platform_admin'
-    )
-  );
+-- RLS: Only platform admins can access wallet information (idempotent)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'platform_wallets'
+      AND policyname = 'Only platform admins can access wallets'
+  ) THEN
+    CREATE POLICY "Only platform admins can access wallets" ON public.platform_wallets
+      FOR ALL USING (
+        EXISTS (
+          SELECT 1 FROM auth.users 
+          WHERE auth.users.id = auth.uid() 
+          AND auth.users.raw_app_meta_data->>'role' = 'platform_admin'
+        )
+      );
+  END IF;
+END $$;
 
 -- Enable RLS
 ALTER TABLE public.platform_wallets ENABLE ROW LEVEL SECURITY;
 
--- Add trigger for updated_at
-CREATE TRIGGER update_platform_wallets_updated_at
-    BEFORE UPDATE ON public.platform_wallets
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+-- Add trigger for updated_at (idempotent)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger t
+    JOIN pg_class c ON c.oid = t.tgrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE t.tgname = 'update_platform_wallets_updated_at'
+      AND n.nspname = 'public'
+      AND c.relname = 'platform_wallets'
+  ) THEN
+    CREATE TRIGGER update_platform_wallets_updated_at
+        BEFORE UPDATE ON public.platform_wallets
+        FOR EACH ROW
+        EXECUTE FUNCTION update_updated_at_column();
+  END IF;
+END $$;
 
 -- Function to get optimal wallet for a network/currency pair
 CREATE OR REPLACE FUNCTION get_optimal_platform_wallet(

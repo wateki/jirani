@@ -78,7 +78,7 @@ const HeroSection = ({
             className="text-4xl font-bold mb-6 leading-tight"
             style={{ color: primaryColor }}
           >
-            {heroHeading || "FIND CLOTHES THAT MATCHES YOUR STYLE"}
+            {heroHeading || "Welcome to Our Store"}
           </h1>
           <p 
             className="text-sm mb-8 max-w-md font-medium"
@@ -87,7 +87,7 @@ const HeroSection = ({
               opacity: 0.9
             }}
           >
-            {heroSubheading || "Browse through our diverse range of meticulously crafted garments, designed to bring out your individuality and cater to your sense of style."}
+            {heroSubheading || "Discover amazing products and services tailored just for you."}
           </p>
           <Link to={`${storePath}/collections`}>
             <button 

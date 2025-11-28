@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { safeJsonParse } from "@/utils/store";
 import { 
   Star,
   Filter,
@@ -26,6 +27,7 @@ import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ModernCartSidebar from "./ModernCartSidebar";
 import ModernStoreHeader from "./ModernStoreHeader";
+import ModernStoreHeaderWithAuth from "./ModernStoreHeaderWithAuth";
 import type { Database } from "@/integrations/supabase/types";
 
 type Collection = Database['public']['Tables']['categories']['Row'];
@@ -37,6 +39,7 @@ interface ModernCollectionsPageProps {
   secondaryColor?: string;
   storeName: string;
   storeSettings?: StoreSettings;
+  useAuth?: boolean; // New prop to determine whether to use auth version
 }
 
 // Campaign Banner Component - using real store campaigns
@@ -139,6 +142,7 @@ const ProductCard = ({
 }) => {
   const { isFavorite, toggleFavorite } = useFavorites();
 
+
   if (viewMode === 'list') {
     return (
       <Link 
@@ -157,14 +161,20 @@ const ProductCard = ({
         {/* Product Info */}
         <div className="flex-1 ml-2 md:ml-3 flex flex-col justify-between">
           <div>
-            <h3 className="font-medium text-gray-900 mb-1 md:mb-2 text-sm md:text-base">{product.name}</h3>
+            <h3 className="font-medium text-gray-900 mb-1 md:mb-2 text-sm md:text-base">
+              {product.name || 'Unnamed Product'}
+            </h3>
+            
             <div className="hidden md:flex items-center space-x-1 mb-2">
               {[...Array(5)].map((_, i) => (
                 <Star key={i} className="h-3 w-3 fill-yellow-400 text-yellow-400" />
               ))}
               <span className="text-xs text-gray-500 ml-1">4.5/5</span>
             </div>
-            <p className="hidden md:block text-sm text-gray-600 line-clamp-2">{product.description}</p>
+            <p className="hidden md:block text-sm text-gray-600 line-clamp-2">
+              {product.description || 'No description available'}
+            </p>
+            
           </div>
           
           <div className="flex items-center justify-between mt-2 md:mt-4">
@@ -267,7 +277,7 @@ const ProductCard = ({
             className="text-xs md:text-sm font-medium"
             style={{ color: secondaryColor || '#6B7280' }}
           >
-            {product.category_id || 'Grande'}
+            {product.sku || 'Product'}
           </p>
           <Button
             variant="ghost"
@@ -286,7 +296,11 @@ const ProductCard = ({
         </div>
         
         {/* Product Name */}
-        <h3 className="text-xs md:text-sm text-gray-600 line-clamp-1">{product.name}</h3>
+        <h3 className="text-xs md:text-sm text-gray-600 line-clamp-1">
+          {product.name || 'Unnamed Product'}
+        </h3>
+        
+        
         
         {/* Star Rating - Hidden on mobile */}
         <div className="hidden md:flex items-center space-x-1">
@@ -561,7 +575,7 @@ const FiltersSidebar = ({
 };
 
 // Main Component
-const ModernCollectionsPage = ({ primaryColor, secondaryColor, storeName, storeSettings }: ModernCollectionsPageProps) => {
+const ModernCollectionsPage = ({ primaryColor, secondaryColor, storeName, storeSettings, useAuth = false }: ModernCollectionsPageProps) => {
   const { storeSlug, collectionId } = useParams();
   const [products, setProducts] = useState<Product[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -622,6 +636,8 @@ const ModernCollectionsPage = ({ primaryColor, secondaryColor, storeName, storeS
         const { data: productsData, error: productsError } = await productsQuery;
         
         if (productsError) throw productsError;
+        
+        
         setProducts(productsData || []);
 
       } catch (error) {
@@ -705,20 +721,32 @@ const ModernCollectionsPage = ({ primaryColor, secondaryColor, storeName, storeS
 
   return (
     <div className="min-h-screen bg-white font-inter">
-      <ModernStoreHeader
-        storeName={storeName}
-        primaryColor={primaryColor}
-        storePath={storePath}
-        cartItemsCount={cartItemsCount}
-        onCartClick={() => setIsCartOpen(true)}
-        collections={collections}
-        currentPage="collections"
-      />
+      {useAuth ? (
+        <ModernStoreHeaderWithAuth
+          storeName={storeName}
+          primaryColor={primaryColor}
+          storePath={storePath}
+          cartItemsCount={cartItemsCount}
+          onCartClick={() => setIsCartOpen(true)}
+          collections={collections}
+          currentPage="collections"
+        />
+      ) : (
+        <ModernStoreHeader
+          storeName={storeName}
+          primaryColor={primaryColor}
+          storePath={storePath}
+          cartItemsCount={cartItemsCount}
+          onCartClick={() => setIsCartOpen(true)}
+          collections={collections}
+          currentPage="collections"
+        />
+      )}
       
       {/* Campaign Banner */}
       {fetchedStoreSettings?.enable_campaigns && fetchedStoreSettings?.custom_campaigns && (
         <CampaignBanner 
-          campaigns={JSON.parse(fetchedStoreSettings.custom_campaigns as string)}
+          campaigns={safeJsonParse(fetchedStoreSettings.custom_campaigns, [])}
           rotationSpeed={fetchedStoreSettings.campaign_rotation_speed || 5}
           isPreview={false}
         />

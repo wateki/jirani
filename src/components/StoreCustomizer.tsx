@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/components/ui/use-toast";
 import { Database } from "@/integrations/supabase/types";
 import { uploadStoreLogo, uploadStoreBanner } from "@/utils/storage";
+import { safeJsonParse } from "@/utils/store";
 import getEnvironmentConfig, { generateStoreUrl } from "../config/environment";
 import StoreCustomizationPanel from "./StoreCustomizationPanel";
 import StorePreviewContainer from "./StorePreviewContainer";
@@ -22,6 +23,7 @@ const StoreCustomizer = () => {
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [isPublished, setIsPublished] = useState(false);
+  const [storeId, setStoreId] = useState<string | null>(null);
 
   // Structured state objects
   const [storeInfo, setStoreInfo] = useState({
@@ -76,6 +78,30 @@ const StoreCustomizer = () => {
   const derivedStoreSlug = storeInfo.storeSlug || 
     storeInfo.storeName.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 
+  // localStorage key for draft store settings
+  const getLocalStorageKey = () => {
+    return user ? `store_customizer_draft_${user.id}` : 'store_customizer_draft';
+  };
+
+  // Save to localStorage whenever state changes
+  useEffect(() => {
+    if (!user || loading) return; // Don't save while loading initial data
+    
+    try {
+      const draftData = {
+        storeInfo,
+        colors,
+        design,
+        campaigns,
+        heroCarousel,
+        timestamp: new Date().toISOString()
+      };
+      localStorage.setItem(getLocalStorageKey(), JSON.stringify(draftData));
+    } catch (error) {
+      console.error('Error saving draft to localStorage:', error);
+    }
+  }, [storeInfo, colors, design, campaigns, heroCarousel, user, loading]);
+
   useEffect(() => {
     if (user) {
       fetchStoreSettings();
@@ -85,6 +111,24 @@ const StoreCustomizer = () => {
     async function fetchStoreSettings() {
       try {
         setLoading(true);
+        
+        // Check if we have localStorage draft - if so, we'll merge DB data with it
+        const hasLocalDraft = (() => {
+          try {
+            const savedDraft = localStorage.getItem(getLocalStorageKey());
+            if (savedDraft) {
+              const draftData = JSON.parse(savedDraft);
+              const draftTime = new Date(draftData.timestamp);
+              const now = new Date();
+              const hoursDiff = (now.getTime() - draftTime.getTime()) / (1000 * 60 * 60);
+              return hoursDiff < 24 && draftData.storeInfo;
+            }
+          } catch {
+            return false;
+          }
+          return false;
+        })();
+        
         const { data, error } = await supabase
           .from('store_settings')
           .select('*')
@@ -97,7 +141,57 @@ const StoreCustomizer = () => {
       }
 
       if (data) {
-        // Map database fields to state structure
+        // Store the store ID for updates
+        setStoreId(data.id);
+        
+        // If we have a localStorage draft, merge DB data with it (DB takes precedence for missing fields)
+        // Otherwise, use DB data directly
+        if (hasLocalDraft) {
+          try {
+            const savedDraft = localStorage.getItem(getLocalStorageKey());
+            if (savedDraft) {
+              const draftData = JSON.parse(savedDraft);
+              // Merge: use draft values if they exist, otherwise use DB values
+              setStoreInfo({
+                storeName: draftData.storeInfo?.storeName || data.store_name || "",
+                storeSlug: draftData.storeInfo?.storeSlug || data.store_slug || "",
+                description: draftData.storeInfo?.description || data.store_description || "",
+                heroHeading: draftData.storeInfo?.heroHeading || data.hero_heading || "",
+                heroSubheading: draftData.storeInfo?.heroSubheading || data.hero_subheading || "",
+              });
+
+              setColors({
+                primaryColor: draftData.colors?.primaryColor || data.primary_color || "#f97316",
+                secondaryColor: draftData.colors?.secondaryColor || data.secondary_color || "#ef4444",
+              });
+
+              setDesign({
+                buttonStyle: draftData.design?.buttonStyle || data.button_style || "rounded",
+                logoImage: draftData.design?.logoImage || data.logo_url || null,
+              });
+
+              setCampaigns({
+                enableCampaigns: draftData.campaigns?.enableCampaigns ?? (data.enable_campaigns || false),
+                campaignRotationSpeed: draftData.campaigns?.campaignRotationSpeed || data.campaign_rotation_speed || 5,
+                customCampaigns: draftData.campaigns?.customCampaigns || safeJsonParse(data.custom_campaigns, []),
+                backgroundImage: draftData.campaigns?.backgroundImage || data.campaign_background_image || null,
+                backgroundOpacity: draftData.campaigns?.backgroundOpacity ?? ((data.campaign_background_opacity || 50) / 100),
+              });
+
+              setHeroCarousel({
+                enableCarousel: draftData.heroCarousel?.enableCarousel ?? (data.enable_hero_carousel || false),
+                autoScrollSpeed: draftData.heroCarousel?.autoScrollSpeed || data.hero_auto_scroll_speed || 10,
+                slides: draftData.heroCarousel?.slides || safeJsonParse(data.hero_slides, []),
+                backgroundImage: draftData.heroCarousel?.backgroundImage || data.hero_background_image || null,
+                backgroundOpacity: draftData.heroCarousel?.backgroundOpacity ?? ((data.hero_background_opacity || 50) / 100),
+              });
+            }
+          } catch (mergeError) {
+            console.error('Error merging localStorage draft with DB data:', mergeError);
+            // Fall through to use DB data only
+          }
+        } else {
+          // No localStorage draft, use DB data directly
           setStoreInfo({
           storeName: data.store_name || "",
           storeSlug: data.store_slug || "",
@@ -116,23 +210,22 @@ const StoreCustomizer = () => {
           logoImage: data.logo_url || null,
         });
 
-        // Parse and set campaign data
         setCampaigns({
           enableCampaigns: data.enable_campaigns || false,
           campaignRotationSpeed: data.campaign_rotation_speed || 5,
-          customCampaigns: data.custom_campaigns ? JSON.parse(data.custom_campaigns as string) : [],
+          customCampaigns: safeJsonParse(data.custom_campaigns, []),
           backgroundImage: data.campaign_background_image || null,
           backgroundOpacity: (data.campaign_background_opacity || 50) / 100, // Convert to decimal
         });
 
-        // Parse and set hero carousel data
         setHeroCarousel({
           enableCarousel: data.enable_hero_carousel || false,
           autoScrollSpeed: data.hero_auto_scroll_speed || 10,
-          slides: data.hero_slides ? JSON.parse(data.hero_slides as string) : [],
+          slides: safeJsonParse(data.hero_slides, []),
           backgroundImage: data.hero_background_image || null,
           backgroundOpacity: (data.hero_background_opacity || 50) / 100, // Convert to decimal
         });
+        }
 
           setIsPublished(data.is_published || false);
         }
@@ -289,8 +382,9 @@ const StoreCustomizer = () => {
           return;
       }
       
-      // Prepare data for database
+      // Prepare data for store_settings table
       const storeData: StoreSettingsInsert = {
+        ...(storeId && { id: storeId }), // Include ID if updating existing store
         user_id: user.id,
         store_name: storeInfo.storeName,
         store_slug: storeSlug,
@@ -318,15 +412,61 @@ const StoreCustomizer = () => {
         updated_at: new Date().toISOString(),
       };
 
-      const { error } = await supabase
+      // Update store_settings table
+      const { error: storeSettingsError } = await supabase
         .from('store_settings')
         .upsert(storeData, {
-          onConflict: 'user_id'
+          onConflict: 'id'
         });
 
-      if (error) {
-        throw error;
+      if (storeSettingsError) {
+        throw storeSettingsError;
       }
+
+      // Also update the stores table to keep store name in sync
+      // First, check if a corresponding stores record exists
+      const { data: existingStoresRecord } = await supabase
+        .from('stores')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (existingStoresRecord) {
+        // Update existing stores record
+        const { error: storesUpdateError } = await supabase
+          .from('stores')
+          .update({
+            name: storeInfo.storeName,
+            description: storeInfo.description,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('user_id', user.id);
+
+        if (storesUpdateError) {
+          console.warn('Warning: Failed to update stores table:', storesUpdateError);
+          // Don't throw error here as store_settings was successful
+        }
+      } else {
+        // Create new stores record to maintain 1:1 relationship
+        const { error: storesInsertError } = await supabase
+          .from('stores')
+          .insert({
+            user_id: user.id,
+            name: storeInfo.storeName,
+            description: storeInfo.description,
+            business_type: 'individual', // Default value
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+
+        if (storesInsertError) {
+          console.warn('Warning: Failed to create stores record:', storesInsertError);
+          // Don't throw error here as store_settings was successful
+        }
+      }
+      
+      // Clear localStorage draft after successful save
+      localStorage.removeItem(getLocalStorageKey());
       
       toast({
         title: "Settings saved",
@@ -357,10 +497,10 @@ const StoreCustomizer = () => {
 
     setPublishing(true);
     try {
-      // First save the current settings
+      // First save the current settings (this will sync both tables)
       await handleSaveSettings();
       
-      // Then mark as published
+      // Then mark as published in store_settings
       const storeSlug = derivedStoreSlug;
       
       const { error } = await supabase
@@ -377,6 +517,9 @@ const StoreCustomizer = () => {
       }
       
       setIsPublished(true);
+      
+      // Clear localStorage draft after successful publish
+      localStorage.removeItem(getLocalStorageKey());
       
       toast({
         title: "Store published!",

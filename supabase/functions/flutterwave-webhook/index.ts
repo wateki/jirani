@@ -385,8 +385,58 @@ async function handleSuccessfulPayment(transaction: any): Promise<void> {
       });
     }
 
+    // Log WhatsApp confirmation message for customer
+    try {
+      if (transaction.store_id && transaction.customer_phone) {
+        await logWhatsappConfirmation({
+          store_id: transaction.store_id,
+          customer_phone: transaction.customer_phone,
+          amount: transaction.amount_fiat,
+          currency: transaction.fiat_currency,
+          order_id: transaction.order_id,
+          payment_reference: transaction.payment_reference,
+        })
+      }
+    } catch (e) {
+      console.error('Failed to log WhatsApp confirmation:', e)
+    }
+
   } catch (error) {
     console.error('Error handling successful payment:', error);
     throw error;
   }
 } 
+
+async function logWhatsappConfirmation(params: {
+  store_id: string
+  customer_phone: string
+  amount: number
+  currency: string
+  order_id?: string
+  payment_reference?: string
+}) {
+  const payload = {
+    store_id: params.store_id,
+    customer_phone: params.customer_phone,
+    message_type: 'outbound_text',
+    message_payload: {
+      text: `Payment received: ${params.currency} ${params.amount}. Ref: ${params.payment_reference || ''} ${params.order_id ? `(Order ${params.order_id})` : ''}`.trim()
+    },
+    whatsapp_message_id: null,
+    status: 'sent'
+  }
+  const resp = await fetch(`${supabaseUrl}/rest/v1/messaging_log`, {
+    method: 'POST',
+    headers: {
+      apikey: supabaseServiceKey!,
+      Authorization: `Bearer ${supabaseServiceKey}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=minimal'
+    },
+    body: JSON.stringify(payload)
+  })
+  if (!resp.ok) {
+    const err = await resp.text()
+    console.error('Failed to insert messaging_log:', err)
+  }
+}

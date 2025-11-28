@@ -176,15 +176,35 @@ SELECT
 FROM public.business_types bt;
 
 -- Add triggers for updated_at
-CREATE TRIGGER update_business_types_updated_at
-    BEFORE UPDATE ON public.business_types
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname = 'update_business_types_updated_at'
+      AND tgrelid = 'public.business_types'::regclass
+  ) THEN
+    EXECUTE 'CREATE TRIGGER update_business_types_updated_at
+      BEFORE UPDATE ON public.business_types
+      FOR EACH ROW
+      EXECUTE FUNCTION update_updated_at_column()';
+  END IF;
+END
+$$;
 
-CREATE TRIGGER update_store_templates_updated_at
-    BEFORE UPDATE ON public.store_templates
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname = 'update_store_templates_updated_at'
+      AND tgrelid = 'public.store_templates'::regclass
+  ) THEN
+    EXECUTE 'CREATE TRIGGER update_store_templates_updated_at
+      BEFORE UPDATE ON public.store_templates
+      FOR EACH ROW
+      EXECUTE FUNCTION update_updated_at_column()';
+  END IF;
+END
+$$;
 
 -- RLS Policies
 ALTER TABLE public.business_types ENABLE ROW LEVEL SECURITY;

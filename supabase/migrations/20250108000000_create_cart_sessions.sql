@@ -75,11 +75,20 @@ USING (
     )
 );
 
--- Create trigger for updated_at column
-CREATE TRIGGER update_cart_sessions_updated_at
-    BEFORE UPDATE ON public.cart_sessions
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname = 'update_cart_sessions_updated_at'
+      AND tgrelid = 'public.cart_sessions'::regclass
+  ) THEN
+    EXECUTE 'CREATE TRIGGER update_cart_sessions_updated_at
+      BEFORE UPDATE ON public.cart_sessions
+      FOR EACH ROW
+      EXECUTE FUNCTION update_updated_at_column()';
+  END IF;
+END
+$$;
 
 -- Function to automatically mark old cart sessions as abandoned
 CREATE OR REPLACE FUNCTION mark_abandoned_carts()

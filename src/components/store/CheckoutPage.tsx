@@ -21,11 +21,13 @@ import * as z from "zod";
 import { ChevronLeft, CheckCircle, ShoppingCart, Smartphone, MapPin, Loader2 } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { useCartSession } from "@/hooks/useCartSession";
-import { useAuth } from "@/contexts/AuthContext";
+import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { PaymentCheckout } from "@/components/payment/PaymentCheckout";
 import { LocationPicker } from "@/components/ui/location-picker";
 import ModernStoreHeader from "./ModernStoreHeader";
+import ModernStoreHeaderWithAuth from "./ModernStoreHeaderWithAuth";
 import ModernCartSidebar from "./ModernCartSidebar";
+import PaystackPop from "@paystack/inline-js";
 
 type Product = Database['public']['Tables']['products']['Row'];
 type StoreSettings = Database['public']['Tables']['store_settings']['Row'];
@@ -35,6 +37,7 @@ interface CheckoutPageProps {
   primaryColor: string;
   storeName: string;
   storeSettings?: StoreSettings;
+  useAuth?: boolean; // New prop to determine whether to use auth version
 }
 
 interface CartItem {
@@ -51,23 +54,45 @@ interface LocationData {
   postalCode?: string;
 }
 
-// Updated checkout form schema for Swypt mobile payments
+// Updated checkout form schema with fulfillment type and payment method
 const checkoutFormSchema = z.object({
   fullName: z.string().min(2, "Full name is required"),
   email: z.string().email("Invalid email address"),
   phoneNumber: z.string().min(10, "Valid phone number is required").regex(/^(\+254|254|0)[17]\d{8}$/, "Please enter a valid Kenyan phone number"),
-  address: z.string().min(5, "Address is required"),
-  city: z.string().min(2, "City is required"),
-  state: z.string().min(2, "State is required"),
-  zipCode: z.string().min(4, "Zip code is required"),
+  fulfillmentType: z.enum(["pickup", "delivery"], {
+    required_error: "Please select how you want to receive your order",
+  }),
+  paymentMethod: z.enum(["pod", "pbd", "pop", "pbp"]).optional(),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zipCode: z.string().optional(),
+}).refine((data) => {
+  // If delivery is selected, address fields are required
+  if (data.fulfillmentType === "delivery") {
+    return data.address && data.address.length >= 5 &&
+           data.city && data.city.length >= 2 &&
+           data.state && data.state.length >= 2 &&
+           data.zipCode && data.zipCode.length >= 4;
+  }
+  return true;
+}, {
+  message: "Address, city, state, and zip code are required for delivery",
+  path: ["address"],
+}).refine((data) => {
+  // Payment method is required for both delivery and pickup
+  return data.paymentMethod !== undefined;
+}, {
+  message: "Please select when you would like to pay",
+  path: ["paymentMethod"],
 });
 
 type CheckoutFormValues = z.infer<typeof checkoutFormSchema>;
 
-const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSettings }: CheckoutPageProps) => {
+const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSettings, useAuth = false }: CheckoutPageProps) => {
   const { storeSlug } = useParams<{ storeSlug: string }>();
   const { cartItems, clearCart, getCartTotal, getCartItemsCount } = useCart();
-  const { user } = useAuth();
+  const { user, isCustomer } = useCustomerAuth();
   const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(propStoreSettings || null);
   const [loading, setLoading] = useState(!propStoreSettings);
   const [orderPlaced, setOrderPlaced] = useState(false);
@@ -75,11 +100,95 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
   const [processingPayment, setProcessingPayment] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'processing' | 'success' | 'failed'>('idle');
   const [currentOrder, setCurrentOrder] = useState<any>(null);
+  const [currentPaymentId, setCurrentPaymentId] = useState<string | null>(null);
   const [locationData, setLocationData] = useState<LocationData | null>(null);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  // Set up Realtime subscription for payment status updates
+  useEffect(() => {
+    if (!currentPaymentId) return;
+
+    console.log('Setting up Realtime subscription for payment:', currentPaymentId);
+
+    const channel = supabase
+      .channel(`payment-${currentPaymentId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'payment_transactions',
+          filter: `id=eq.${currentPaymentId}`,
+        },
+        (payload) => {
+          console.log('Payment status updated via Realtime:', payload);
+          const payment = payload.new as any;
+          
+          // Handle payment status changes
+          switch (payment.status) {
+            case 'completed':
+              setPaymentStatus('success');
+              setProcessingPayment(false);
+              handlePaymentSuccess();
+              // Cleanup subscription after successful payment
+              supabase.removeChannel(channel);
+              break;
+            case 'failed':
+            case 'cancelled':
+              setPaymentStatus('failed');
+              setProcessingPayment(false);
+              const errorMsg = (payment.payment_metadata as any)?.error_message || 
+                              (payment.paystack_metadata as any)?.error_message ||
+                              "Payment could not be completed.";
+              toast({
+                title: "Payment failed",
+                description: errorMsg,
+                variant: "destructive",
+              });
+              // Cleanup subscription after failed payment
+              supabase.removeChannel(channel);
+              break;
+            case 'processing':
+            case 'authorized':
+              // Payment is being processed, keep status as processing
+              setPaymentStatus('processing');
+              break;
+            default:
+              // Other statuses (initialized, etc.) - keep processing
+              setPaymentStatus('processing');
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Realtime subscription active for payment:', currentPaymentId);
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('Realtime subscription error for payment:', currentPaymentId);
+        }
+      });
+
+    // Safety timeout: If payment doesn't complete within 10 minutes, show timeout message
+    const timeoutId = setTimeout(() => {
+      if (paymentStatus === 'processing') {
+        console.warn('Payment timeout - no status update received');
+        toast({
+          title: "Payment taking longer than expected",
+          description: "Your payment may still be processing. Please check your email or contact support if you've been charged.",
+          variant: "default",
+        });
+      }
+    }, 10 * 60 * 1000); // 10 minutes
+
+    // Cleanup subscription and timeout on unmount or when payment completes/fails
+    return () => {
+      console.log('Cleaning up Realtime subscription for payment:', currentPaymentId);
+      clearTimeout(timeoutId);
+      supabase.removeChannel(channel);
+    };
+  }, [currentPaymentId, paymentStatus]);
 
   // Initialize cart session hook for conversion tracking
   const { markCartAsConverted } = useCartSession({
@@ -94,6 +203,8 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
   const form = useForm<CheckoutFormValues>({
     resolver: zodResolver(checkoutFormSchema),
     defaultValues: {
+      fulfillmentType: "delivery" as const,
+      paymentMethod: undefined,
       fullName: "",
       email: "",
       phoneNumber: "",
@@ -103,6 +214,23 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
       zipCode: "",
     },
   });
+
+  // Pre-fill form with user data if signed in
+  useEffect(() => {
+    if (user && user.user_metadata) {
+      const metadata = user.user_metadata;
+      
+      if (metadata.full_name) {
+        form.setValue('fullName', metadata.full_name);
+      }
+      if (user.email) {
+        form.setValue('email', user.email);
+      }
+      if (metadata.phone) {
+        form.setValue('phoneNumber', metadata.phone);
+      }
+    }
+  }, [user, form]);
 
   useEffect(() => {
     const fetchStoreData = async () => {
@@ -175,9 +303,14 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
   
   const subtotal = getCartTotal();
   
-  const shipping = 1; // KES 200 shipping
+  // Get fulfillment type from form to calculate shipping
+  const fulfillmentType = form.watch('fulfillmentType') || 'delivery';
+  const shipping = fulfillmentType === 'delivery' ? 200 : 0; // KES 200 shipping for delivery, free for pickup
   const tax = subtotal * 0.16; // 16% VAT (Kenya standard rate)
   const total = subtotal + shipping + tax;
+
+  // Check if user is signed in for enhanced experience
+  const isUserSignedIn = !!user;
 
   const onSubmit = async (data: CheckoutFormValues) => {
     if (cartItems.length === 0 || !storeSettings) {
@@ -211,20 +344,56 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
         })
       };
       
+      // Determine payment method based on fulfillment type and store settings
+      let paymentMethod: 'pod' | 'pbd' | 'pop' | 'pbp' | null = null;
+      if (data.fulfillmentType === 'delivery') {
+        const deliveryPaymentOptions = (storeSettings as any).delivery_payment_options || 'customer_choice';
+        if (deliveryPaymentOptions === 'pod') {
+          paymentMethod = 'pod';
+        } else if (deliveryPaymentOptions === 'pbd') {
+          paymentMethod = 'pbd';
+        } else {
+          // Customer choice - use selected payment method
+          paymentMethod = data.paymentMethod as 'pod' | 'pbd';
+        }
+      } else {
+        // For pickup orders
+        const pickupPaymentOptions = (storeSettings as any).pickup_payment_options || 'customer_choice';
+        if (pickupPaymentOptions === 'pop') {
+          paymentMethod = 'pop';
+        } else if (pickupPaymentOptions === 'pbp') {
+          paymentMethod = 'pbp';
+        } else {
+          // Customer choice - use selected payment method
+          paymentMethod = data.paymentMethod as 'pop' | 'pbp';
+        }
+      }
+      
       // Create a new order
+      // Build order data object, conditionally including customer_user_id to avoid schema cache issues
+      const orderDataToInsert: any = {
+        store_id: storeSettings.id,
+        order_number: orderNumber,
+        customer_name: data.fullName,
+        customer_email: data.email,
+        customer_phone: data.phoneNumber,
+        shipping_address: data.fulfillmentType === 'delivery' ? shippingAddress : null,
+        status: 'pending',
+        payment_status: 'pending',
+        fulfillment_type: data.fulfillmentType,
+        payment_method: paymentMethod,
+        total_amount: total,
+        user_id: storeSettings.user_id, // Store owner/merchant user ID
+      };
+      
+      // Only include customer_user_id if user is signed in (avoids schema cache issues with null)
+      if (user?.id) {
+        orderDataToInsert.customer_user_id = user.id;
+      }
+      
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
-        .insert({
-          store_id: storeSettings.id,
-          order_number: orderNumber,
-          customer_name: data.fullName,
-          customer_email: data.email,
-          customer_phone: data.phoneNumber,
-          shipping_address: shippingAddress,
-          status: 'pending',
-          total_amount: total,
-          user_id: storeSettings.user_id
-        })
+        .insert(orderDataToInsert)
         .select()
         .single();
       
@@ -251,8 +420,30 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
       
       setCurrentOrder(orderData);
       
-      // Initiate payment directly using the phone number from the form
-      await initiatePayment(orderData, data.phoneNumber);
+      // Handle payment based on payment method
+      if (paymentMethod === 'pod' || paymentMethod === 'pop') {
+        // Payment on Delivery/Pickup - order created, payment will be collected via Paystack when order is fulfilled
+        setPaymentStatus('success');
+        setOrderPlaced(true);
+        setOrderNumber(orderData.order_number);
+        clearCart();
+        markCartAsConverted(orderData.id);
+        
+        const fulfillmentText = paymentMethod === 'pod' ? 'delivered' : 'picked up';
+        toast({
+          title: "Order placed successfully!",
+          description: `Your order #${orderData.order_number} has been placed. Payment will be collected via Paystack when your order is ${fulfillmentText}.`,
+          variant: "default",
+        });
+        
+        // Redirect to order confirmation
+        setTimeout(() => {
+          navigate(`${storePath}/order/${orderData.id}`);
+        }, 2000);
+      } else {
+        // PBD (Payment before Delivery) or PBP (Payment before Pickup) - initiate Paystack payment immediately
+        await initiatePayment(orderData, data.phoneNumber);
+      }
       
     } catch (error) {
       console.error('Error creating order:', error);
@@ -269,8 +460,8 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
 
   const initiatePayment = async (order: any, phoneNumber: string) => {
     try {
-      // Call the payment processing function (this would be your Swypt integration)
-      const paymentResponse = await supabase.functions.invoke('process-payment', {
+      // Initialize Paystack payment
+      const paymentResponse = await supabase.functions.invoke('initialize-paystack-payment', {
         body: {
           storeId: storeSettings?.id,
           orderId: order.id,
@@ -278,37 +469,82 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
           currency: 'KES',
           customerPhone: phoneNumber,
           customerEmail: form.getValues('email'),
-          items: cartItems.map(item => ({
-            name: item.product.name,
-            quantity: item.quantity,
-            price: item.product.price
-          }))
+          customerName: form.getValues('fullName'),
+          callbackUrl: `${window.location.origin}${storePath}/payment/callback`,
+          metadata: {
+            order_number: order.order_number,
+            items: cartItems.map(item => ({
+              name: item.product.name,
+              quantity: item.quantity,
+              price: item.product.price
+            }))
+          }
         }
       });
 
       if (paymentResponse.error) {
-        console.log(paymentResponse.error);
-        throw new Error(paymentResponse.error.message);
+        console.error('Payment initialization error:', paymentResponse.error);
+        throw new Error(paymentResponse.error.message || 'Failed to initialize payment');
       }
 
       const { data: paymentData } = paymentResponse;
 
-      if (paymentData.success) {
-        setPaymentStatus('success');
-        
-        toast({
-          title: "Payment initiated!",
-          description: "Please check your phone for the M-Pesa payment prompt.",
-        });
-
-        // Start polling for payment status
-        pollPaymentStatus(paymentData.paymentId);
-      } else {
+      if (!paymentData.success) {
         throw new Error(paymentData.error || 'Payment initiation failed');
       }
+
+      // Store payment ID for status checking (triggers Realtime subscription)
+      setCurrentPaymentId(paymentData.paymentId);
+      setPaymentStatus('processing');
+
+      // Check initial payment status (in case webhook already processed it)
+      const { data: initialPayment, error: initialPaymentError } = await supabase
+        .from('payment_transactions')
+        .select('status')
+        .eq('id', paymentData.paymentId)
+        .single();
+
+      if (!initialPaymentError && initialPayment) {
+        if (initialPayment.status === 'completed') {
+          setPaymentStatus('success');
+          handlePaymentSuccess();
+          return;
+        } else if (initialPayment.status === 'failed' || initialPayment.status === 'cancelled') {
+          setPaymentStatus('failed');
+          setProcessingPayment(false);
+          toast({
+            title: "Payment failed",
+            description: "Payment could not be completed.",
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+
+      // Open Paystack Popup
+      const paystack = new PaystackPop();
+      
+      paystack.resumeTransaction(paymentData.accessCode, {
+        onSuccess: () => {
+          console.log('Payment successful via popup - waiting for webhook confirmation');
+          // Realtime subscription will handle status updates when webhook processes the payment
+        },
+        onClose: () => {
+          console.log('Payment popup closed');
+          // User closed the popup - Realtime subscription will still listen for status changes
+          // Payment might complete via webhook even if popup is closed
+        },
+      });
+
+      toast({
+        title: "Payment window opened",
+        description: "Please complete your payment in the popup window.",
+      });
+
     } catch (error) {
       console.error('Payment initiation error:', error);
       setPaymentStatus('failed');
+      setProcessingPayment(false);
       toast({
         title: "Payment failed",
         description: error instanceof Error ? error.message : "Could not initiate payment. Please try again.",
@@ -317,80 +553,6 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
     }
   };
 
-  const pollPaymentStatus = async (paymentId: string) => {
-    const maxAttempts = 30; // Poll for 5 minutes (30 * 10 seconds)
-    let attempts = 0;
-
-    const checkStatus = async () => {
-      try {
-        const { data: payment, error } = await supabase
-          .from('payment_transactions')
-          .select('status, metadata')
-          .eq('id', paymentId)
-          .single();
-
-        if (error) throw error;
-
-        attempts++;
-
-        switch (payment.status) {
-          case 'completed':
-            setPaymentStatus('success');
-            handlePaymentSuccess();
-            return;
-          case 'failed':
-            setPaymentStatus('failed');
-            toast({
-              title: "Payment failed",
-              description: (payment.metadata as any)?.error_message || "Payment could not be completed.",
-              variant: "destructive",
-            });
-            return;
-          case 'stk_initiated':
-          case 'stk_success':
-          case 'crypto_processing':
-            // Continue polling
-            if (attempts < maxAttempts) {
-              setTimeout(checkStatus, 10000); // Check every 10 seconds
-            } else {
-              setPaymentStatus('failed');
-              toast({
-                title: "Payment timeout",
-                description: "Payment is taking longer than expected. Please contact support.",
-                variant: "destructive",
-              });
-            }
-            break;
-          default:
-            if (attempts < maxAttempts) {
-              setTimeout(checkStatus, 10000);
-            } else {
-              setPaymentStatus('failed');
-              toast({
-                title: "Payment timeout",
-                description: "Payment status unknown. Please contact support.",
-                variant: "destructive",
-              });
-            }
-        }
-      } catch (error) {
-        console.error('Error checking payment status:', error);
-        if (attempts < maxAttempts) {
-          setTimeout(checkStatus, 10000);
-        } else {
-          setPaymentStatus('failed');
-          toast({
-            title: "Payment error",
-            description: "Could not verify payment status. Please contact support.",
-            variant: "destructive",
-          });
-        }
-      }
-    };
-
-    // Start checking after 5 seconds
-    setTimeout(checkStatus, 5000);
-  };
 
   const handlePaymentSuccess = () => {
     // Clear cart
@@ -458,16 +620,29 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
       '--primary': storeSettings?.primary_color || '#4f46e5',
       '--secondary': storeSettings?.secondary_color || '#0f172a',
     } as React.CSSProperties}>
-      <ModernStoreHeader
-        storeName={storeSettings?.store_name || storeName}
-        primaryColor={primaryColor}
-        logoUrl={storeSettings?.logo_url}
-        storePath={storePath}
-        cartItemsCount={cartItemCount}
-        onCartClick={() => setIsCartOpen(true)}
-        collections={collections}
-        currentPage="home"
-      />
+      {useAuth ? (
+        <ModernStoreHeaderWithAuth
+          storeName={storeSettings?.store_name || storeName}
+          primaryColor={primaryColor}
+          logoUrl={storeSettings?.logo_url}
+          storePath={storePath}
+          cartItemsCount={cartItemCount}
+          onCartClick={() => setIsCartOpen(true)}
+          collections={collections}
+          currentPage="home"
+        />
+      ) : (
+        <ModernStoreHeader
+          storeName={storeSettings?.store_name || storeName}
+          primaryColor={primaryColor}
+          logoUrl={storeSettings?.logo_url}
+          storePath={storePath}
+          cartItemsCount={cartItemCount}
+          onCartClick={() => setIsCartOpen(true)}
+          collections={collections}
+          currentPage="home"
+        />
+      )}
 
       <div className="container mx-auto px-4 py-8">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -496,10 +671,18 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
                   <p>KES {subtotal.toLocaleString()}</p>
                 </div>
                 
-                <div className="flex justify-between">
-                  <p className="text-gray-600">Shipping</p>
-                  <p>KES {shipping.toLocaleString()}</p>
-                </div>
+                {fulfillmentType === 'delivery' && (
+                  <div className="flex justify-between">
+                    <p className="text-gray-600">Shipping</p>
+                    <p>KES {shipping.toLocaleString()}</p>
+                  </div>
+                )}
+                {fulfillmentType === 'pickup' && (
+                  <div className="flex justify-between">
+                    <p className="text-gray-600">Fulfillment</p>
+                    <p className="text-green-600 font-medium">Free Pickup</p>
+                  </div>
+                )}
                 
                 <div className="flex justify-between">
                   <p className="text-gray-600">VAT (16%)</p>
@@ -518,6 +701,49 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
           
           {/* Checkout Form */}
           <div className="md:col-span-2 order-1 md:order-2">
+            {/* User Authentication Status */}
+            <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className={`w-3 h-3 rounded-full ${isUserSignedIn ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                  <div>
+                    <h3 className="font-medium text-gray-900">
+                      {isUserSignedIn ? 'Signed in to Jirani' : 'Guest Checkout'}
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      {isUserSignedIn 
+                        ? 'Enjoy faster checkout and order tracking across all stores'
+                        : 'Sign in for a unified shopping experience across all Jirani stores'
+                      }
+                    </p>
+                  </div>
+                </div>
+                {!isUserSignedIn && (
+                  <Link to={`/customer/login?returnUrl=${encodeURIComponent(window.location.pathname)}`}>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      className="text-sm"
+                    >
+                      Sign in to Jirani
+                    </Button>
+                  </Link>
+                )}
+              </div>
+              
+              {!isUserSignedIn && (
+                <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <h4 className="font-medium text-blue-900 mb-2">Benefits of signing in:</h4>
+                  <ul className="text-sm text-blue-800 space-y-1">
+                    <li>• Track orders across all stores in one place</li>
+                    <li>• Faster checkout with saved information</li>
+                    <li>• Access to exclusive deals and promotions</li>
+                    <li>• Unified shopping cart across stores</li>
+                  </ul>
+                </div>
+              )}
+            </div>
+
             <div className="bg-white rounded-lg shadow-sm p-6">
               <h2 className="text-lg font-semibold mb-6">Shipping & Contact Information</h2>
               
@@ -570,77 +796,338 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
                             />
                           </div>
                         </FormControl>
-                        <p className="text-xs text-gray-500">You'll receive an M-Pesa payment prompt on this number</p>
+                        <p className="text-xs text-gray-500">Payment will be processed securely</p>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                   
-                  {/* Location Picker Section */}
-                  <div className="space-y-4">
-                    <LocationPicker
-                      onLocationSelect={handleLocationSelect}
-                      currentLocation={locationData}
-                    />
-                  </div>
-                  
+                  {/* Fulfillment Type Selection */}
                   <FormField
                     control={form.control}
-                    name="address"
+                    name="fulfillmentType"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Address</FormLabel>
+                        <FormLabel>How would you like to receive your order?</FormLabel>
                         <FormControl>
-                          <Input {...field} placeholder="123 Main St" />
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                field.onChange("pickup");
+                                // Clear address fields when switching to pickup
+                                form.setValue("address", "");
+                                form.setValue("city", "");
+                                form.setValue("state", "");
+                                form.setValue("zipCode", "");
+                              }}
+                              className={`p-4 border-2 rounded-lg text-left transition-all ${
+                                field.value === "pickup"
+                                  ? "border-blue-500 bg-blue-50"
+                                  : "border-gray-200 hover:border-gray-300"
+                              }`}
+                            >
+                              <div className="flex items-center space-x-3">
+                                <MapPin className={`h-5 w-5 ${field.value === "pickup" ? "text-blue-600" : "text-gray-400"}`} />
+                                <div>
+                                  <p className="font-medium">Pickup at Store</p>
+                                  <p className="text-sm text-gray-500">Collect your order from the store</p>
+                                </div>
+                              </div>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => field.onChange("delivery")}
+                              className={`p-4 border-2 rounded-lg text-left transition-all ${
+                                field.value === "delivery"
+                                  ? "border-blue-500 bg-blue-50"
+                                  : "border-gray-200 hover:border-gray-300"
+                              }`}
+                            >
+                              <div className="flex items-center space-x-3">
+                                <ShoppingCart className={`h-5 w-5 ${field.value === "delivery" ? "text-blue-600" : "text-gray-400"}`} />
+                                <div>
+                                  <p className="font-medium">Delivery</p>
+                                  <p className="text-sm text-gray-500">KES 200 shipping fee</p>
+                                </div>
+                              </div>
+                            </button>
+                          </div>
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                   
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Payment Method Selection - Show for both delivery and pickup */}
+                  {form.watch('fulfillmentType') === 'delivery' && storeSettings && (
                     <FormField
                       control={form.control}
-                      name="city"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>City</FormLabel>
-                          <FormControl>
-                            <Input {...field} placeholder="Nairobi" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
+                      name="paymentMethod"
+                      render={({ field }) => {
+                        // Get store's delivery payment options
+                        const deliveryPaymentOptions = (storeSettings as any).delivery_payment_options || 'customer_choice';
+                        
+                        // Auto-select if store has a fixed option
+                        if (deliveryPaymentOptions === 'pod' && !field.value) {
+                          field.onChange('pod');
+                        } else if (deliveryPaymentOptions === 'pbd' && !field.value) {
+                          field.onChange('pbd');
+                        }
+                        
+                        // If store doesn't allow customer choice, hide the selection
+                        if (deliveryPaymentOptions !== 'customer_choice') {
+                          return null;
+                        }
+                        
+                        return (
+                          <FormItem>
+                            <FormLabel>When would you like to pay?</FormLabel>
+                            <FormControl>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <button
+                                  type="button"
+                                  onClick={() => field.onChange("pod")}
+                                  className={`p-4 border-2 rounded-lg text-left transition-all ${
+                                    field.value === "pod"
+                                      ? "border-blue-500 bg-blue-50"
+                                      : "border-gray-200 hover:border-gray-300"
+                                  }`}
+                                >
+                                  <div className="flex items-center space-x-3">
+                                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                                      field.value === "pod" ? "border-blue-500" : "border-gray-300"
+                                    }`}>
+                                      {field.value === "pod" && (
+                                        <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                      )}
+                                    </div>
+                                    <div>
+                                      <p className="font-medium">Pay on Delivery</p>
+                                      <p className="text-sm text-gray-500">Pay via Paystack when you receive</p>
+                                    </div>
+                                  </div>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => field.onChange("pbd")}
+                                  className={`p-4 border-2 rounded-lg text-left transition-all ${
+                                    field.value === "pbd"
+                                      ? "border-blue-500 bg-blue-50"
+                                      : "border-gray-200 hover:border-gray-300"
+                                  }`}
+                                >
+                                  <div className="flex items-center space-x-3">
+                                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                                      field.value === "pbd" ? "border-blue-500" : "border-gray-300"
+                                    }`}>
+                                      {field.value === "pbd" && (
+                                        <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                      )}
+                                    </div>
+                                    <div>
+                                      <p className="font-medium">Pay Before Delivery</p>
+                                      <p className="text-sm text-gray-500">Pay via Paystack now</p>
+                                    </div>
+                                  </div>
+                                </button>
+                              </div>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        );
+                      }}
                     />
-                    
+                  )}
+                  
+                  {/* Payment Method Selection - For pickup orders */}
+                  {form.watch('fulfillmentType') === 'pickup' && storeSettings && (
                     <FormField
                       control={form.control}
-                      name="state"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>County</FormLabel>
-                          <FormControl>
-                            <Input {...field} placeholder="Nairobi" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
+                      name="paymentMethod"
+                      render={({ field }) => {
+                        // Get store's pickup payment options
+                        const pickupPaymentOptions = (storeSettings as any).pickup_payment_options || 'customer_choice';
+                        
+                        // Auto-select if store has a fixed option
+                        if (pickupPaymentOptions === 'pop' && !field.value) {
+                          field.onChange('pop');
+                        } else if (pickupPaymentOptions === 'pbp' && !field.value) {
+                          field.onChange('pbp');
+                        }
+                        
+                        // If store doesn't allow customer choice, hide the selection
+                        if (pickupPaymentOptions !== 'customer_choice') {
+                          return null;
+                        }
+                        
+                        return (
+                          <FormItem>
+                            <FormLabel>When would you like to pay?</FormLabel>
+                            <FormControl>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <button
+                                  type="button"
+                                  onClick={() => field.onChange("pop")}
+                                  className={`p-4 border-2 rounded-lg text-left transition-all ${
+                                    field.value === "pop"
+                                      ? "border-blue-500 bg-blue-50"
+                                      : "border-gray-200 hover:border-gray-300"
+                                  }`}
+                                >
+                                  <div className="flex items-center space-x-3">
+                                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                                      field.value === "pop" ? "border-blue-500" : "border-gray-300"
+                                    }`}>
+                                      {field.value === "pop" && (
+                                        <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                      )}
+                                    </div>
+                                    <div>
+                                      <p className="font-medium">Pay on Pickup</p>
+                                      <p className="text-sm text-gray-500">Pay via Paystack when you collect</p>
+                                    </div>
+                                  </div>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => field.onChange("pbp")}
+                                  className={`p-4 border-2 rounded-lg text-left transition-all ${
+                                    field.value === "pbp"
+                                      ? "border-blue-500 bg-blue-50"
+                                      : "border-gray-200 hover:border-gray-300"
+                                  }`}
+                                >
+                                  <div className="flex items-center space-x-3">
+                                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                                      field.value === "pbp" ? "border-blue-500" : "border-gray-300"
+                                    }`}>
+                                      {field.value === "pbp" && (
+                                        <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                      )}
+                                    </div>
+                                    <div>
+                                      <p className="font-medium">Pay Before Pickup</p>
+                                      <p className="text-sm text-gray-500">Pay via Paystack now</p>
+                                    </div>
+                                  </div>
+                                </button>
+                              </div>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        );
+                      }}
                     />
-                    
-                    <FormField
-                      control={form.control}
-                      name="zipCode"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Postal Code</FormLabel>
-                          <FormControl>
-                            <Input {...field} placeholder="00100" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
+                  )}
+                  
+                  {/* Show payment method info if store has fixed option for delivery */}
+                  {form.watch('fulfillmentType') === 'delivery' && storeSettings && (storeSettings as any).delivery_payment_options === 'pod' && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <p className="text-sm text-blue-800">
+                        <strong>Payment Timing:</strong> Payment on Delivery - You'll pay via Paystack when you receive your order.
+                      </p>
+                    </div>
+                  )}
+                  {form.watch('fulfillmentType') === 'delivery' && storeSettings && (storeSettings as any).delivery_payment_options === 'pbd' && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <p className="text-sm text-blue-800">
+                        <strong>Payment Timing:</strong> Payment required before delivery. You'll be redirected to complete payment via Paystack.
+                      </p>
+                    </div>
+                  )}
+                  
+                  {/* Show payment method info if store has fixed option for pickup */}
+                  {form.watch('fulfillmentType') === 'pickup' && storeSettings && (storeSettings as any).pickup_payment_options === 'pop' && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <p className="text-sm text-blue-800">
+                        <strong>Payment Timing:</strong> Payment on Pickup - You'll pay via Paystack when you collect your order.
+                      </p>
+                    </div>
+                  )}
+                  {form.watch('fulfillmentType') === 'pickup' && storeSettings && (storeSettings as any).pickup_payment_options === 'pbp' && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <p className="text-sm text-blue-800">
+                        <strong>Payment Timing:</strong> Payment required before pickup. You'll be redirected to complete payment via Paystack.
+                      </p>
+                    </div>
+                  )}
+                  
+                  {/* Location Picker Section - Only show for delivery */}
+                  {form.watch('fulfillmentType') === 'delivery' && (
+                    <div className="space-y-4">
+                      <LocationPicker
+                        onLocationSelect={handleLocationSelect}
+                        currentLocation={locationData}
+                      />
+                    </div>
+                  )}
+                  
+                  {/* Address fields - Only show for delivery */}
+                  {form.watch('fulfillmentType') === 'delivery' && (
+                    <>
+                      <FormField
+                        control={form.control}
+                        name="address"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Address</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="123 Main St" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </>
+                  )}
+                  
+                  {/* City, State, ZipCode - Only show for delivery */}
+                  {form.watch('fulfillmentType') === 'delivery' && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="city"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>City</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="Nairobi" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name="state"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>County</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="Nairobi" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name="zipCode"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Postal Code</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="00100" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  )}
                   
                   {/* Payment Status Indicator */}
                   {paymentStatus === 'processing' && (
@@ -650,7 +1137,7 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
                         <div>
                           <h3 className="text-sm font-medium text-yellow-900">Payment in Progress</h3>
                           <p className="text-sm text-yellow-700 mt-1">
-                            Please check your phone for the M-Pesa payment prompt and complete the payment.
+                            Please complete your payment in the popup window that will open.
                           </p>
                         </div>
                       </div>
@@ -675,9 +1162,9 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
                     <div className="flex items-start">
                       <Smartphone className="h-5 w-5 text-blue-600 mt-0.5 mr-3" />
                       <div>
-                        <h3 className="text-sm font-medium text-blue-900">M-Pesa Payment</h3>
+                        <h3 className="text-sm font-medium text-blue-900">Paystack Payment</h3>
                         <p className="text-sm text-blue-700 mt-1">
-                          After clicking "Complete Order & Pay", you'll receive an M-Pesa STK push notification on your phone to complete the payment of KES {total.toLocaleString()}.
+                          After clicking "Complete Order & Pay", a secure payment window will open where you can pay KES {total.toLocaleString()} using card, bank transfer, mobile money, or other supported methods.
                         </p>
                       </div>
                     </div>

@@ -1,6 +1,7 @@
 import React from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { User, Mail, Lock } from "lucide-react";
 import { RegistrationData } from "@/types/database";
 
@@ -63,12 +64,33 @@ export const BasicInfoStep: React.FC<BasicInfoStepProps> = ({ data, onDataChange
             Must be at least 6 characters long
           </p>
         </div>
+
+        <div className="space-y-2">
+          <div className="flex items-start space-x-2">
+            <Checkbox
+              id="privacy-policy"
+              checked={data.agreedToPrivacyPolicy}
+              onCheckedChange={(checked) => onDataChange({ agreedToPrivacyPolicy: !!checked })}
+              className="mt-1"
+            />
+            <Label htmlFor="privacy-policy" className="text-sm leading-relaxed">
+              I agree to the{" "}
+              <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">
+                Privacy Policy
+              </a>{" "}
+              and{" "}
+              <a href="/terms-of-service" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">
+                Terms of Service
+              </a>
+            </Label>
+          </div>
+        </div>
       </div>
 
       <div className="bg-blue-50 p-4 rounded-lg">
-        <h4 className="font-medium text-blue-900 mb-2">What's Next?</h4>
+        <h4 className="font-medium text-blue-900 mb-2">Creating Your Account</h4>
         <p className="text-sm text-blue-700">
-          After entering your basic information, we'll help you choose the perfect business type 
+          We'll create your account first, then help you choose the perfect business type 
           and template for your store, making setup quick and easy.
         </p>
       </div>

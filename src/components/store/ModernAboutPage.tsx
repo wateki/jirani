@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import ModernStoreHeader from "./ModernStoreHeader";
+import ModernStoreHeaderWithAuth from "./ModernStoreHeaderWithAuth";
 import ModernCartSidebar from "./ModernCartSidebar";
 
 type Collection = Database['public']['Tables']['categories']['Row'];
@@ -33,9 +34,10 @@ interface ModernAboutPageProps {
   storeName: string;
   storeSettings?: Database['public']['Tables']['store_settings']['Row'];
   storeSlug?: string;
+  useAuth?: boolean; // New prop to determine whether to use auth version
 }
 
-const ModernAboutPage = ({ primaryColor, secondaryColor, storeName, storeSettings, storeSlug }: ModernAboutPageProps) => {
+const ModernAboutPage = ({ primaryColor, secondaryColor, storeName, storeSettings, storeSlug, useAuth = false }: ModernAboutPageProps) => {
   const location = useLocation();
   const navigate = useNavigate();
   const storePath = location.pathname.split('/about')[0] || '';
@@ -80,16 +82,29 @@ const ModernAboutPage = ({ primaryColor, secondaryColor, storeName, storeSetting
 
   return (
     <div className="min-h-screen bg-white font-inter">
-      <ModernStoreHeader
-        storeName={storeName}
-        primaryColor={primaryColor}
-        logoUrl={storeSettings?.logo_url}
-        storePath={storePath}
-        cartItemsCount={cartItemsCount}
-        onCartClick={() => setIsCartOpen(true)}
-        collections={collections}
-        currentPage="about"
-      />
+      {useAuth ? (
+        <ModernStoreHeaderWithAuth
+          storeName={storeName}
+          primaryColor={primaryColor}
+          logoUrl={storeSettings?.logo_url}
+          storePath={storePath}
+          cartItemsCount={cartItemsCount}
+          onCartClick={() => setIsCartOpen(true)}
+          collections={collections}
+          currentPage="about"
+        />
+      ) : (
+        <ModernStoreHeader
+          storeName={storeName}
+          primaryColor={primaryColor}
+          logoUrl={storeSettings?.logo_url}
+          storePath={storePath}
+          cartItemsCount={cartItemsCount}
+          onCartClick={() => setIsCartOpen(true)}
+          collections={collections}
+          currentPage="about"
+        />
+      )}
 
       {/* Hero Section */}
       <section 

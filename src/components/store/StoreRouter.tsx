@@ -1,13 +1,13 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import StoreCollectionsPage from "./StoreCollectionsPage";
-import ModernStorePage from "./ModernStorePage";
-import ModernCollectionsPage from "./ModernCollectionsPage";
-import ModernProductPage from "./ModernProductPage";
-import ModernAboutPage from "./ModernAboutPage";
+import ModernStorePageWithAuth from "./ModernStorePageWithAuth";
+import ModernCollectionsPageWithAuth from "./ModernCollectionsPageWithAuth";
+import ModernProductPageWithAuth from "./ModernProductPageWithAuth";
+import ModernAboutPageWithAuth from "./ModernAboutPageWithAuth";
 import FavoritesPage from "./FavoritesPage";
-import CartPage from "./CartPage";
-import CheckoutPage from "./CheckoutPage";
-import OrderConfirmationPage from "./OrderConfirmationPage";
+import CartPageWithAuth from "./CartPageWithAuth";
+import CheckoutPageWithAuth from "./CheckoutPageWithAuth";
+import OrderConfirmationPageWithAuth from "./OrderConfirmationPageWithAuth";
 import type { Database } from "@/integrations/supabase/types";
 
 type StoreRouterProps = {
@@ -20,9 +20,9 @@ type StoreRouterProps = {
 
 const StoreRouter = ({ primaryColor, secondaryColor, storeName, storeSettings, useModernTemplate = true }: StoreRouterProps) => {
   // Choose which store page to render based on template preference
-  const StorePageComponent = useModernTemplate ? ModernStorePage : StoreCollectionsPage;
-  const CollectionsPageComponent = useModernTemplate ? ModernCollectionsPage : StoreCollectionsPage;
-  const ProductPageComponent = useModernTemplate ? ModernProductPage : StoreCollectionsPage;
+  const StorePageComponent = useModernTemplate ? ModernStorePageWithAuth : StoreCollectionsPage;
+  const CollectionsPageComponent = useModernTemplate ? ModernCollectionsPageWithAuth : StoreCollectionsPage;
+  const ProductPageComponent = useModernTemplate ? ModernProductPageWithAuth : StoreCollectionsPage;
 
   return (
     <Routes>
@@ -78,9 +78,9 @@ const StoreRouter = ({ primaryColor, secondaryColor, storeName, storeSettings, u
       
       {/* About */}
       <Route 
-        path="/about" 
+        path="/about"
         element={
-          <ModernAboutPage
+          <ModernAboutPageWithAuth
             primaryColor={primaryColor}
             secondaryColor={secondaryColor}
             storeName={storeName}
@@ -105,7 +105,7 @@ const StoreRouter = ({ primaryColor, secondaryColor, storeName, storeSettings, u
       <Route 
         path="/cart" 
         element={
-          <CartPage
+          <CartPageWithAuth
             primaryColor={primaryColor}
             storeName={storeName}
             storeSettings={storeSettings}
@@ -117,7 +117,7 @@ const StoreRouter = ({ primaryColor, secondaryColor, storeName, storeSettings, u
       <Route 
         path="/checkout" 
         element={
-          <CheckoutPage
+          <CheckoutPageWithAuth
             primaryColor={primaryColor}
             storeName={storeName}
             storeSettings={storeSettings}
@@ -129,7 +129,7 @@ const StoreRouter = ({ primaryColor, secondaryColor, storeName, storeSettings, u
       <Route 
         path="/order/:orderId" 
         element={
-          <OrderConfirmationPage
+          <OrderConfirmationPageWithAuth
             primaryColor={primaryColor}
             storeName={storeName}
             storeSettings={storeSettings}
