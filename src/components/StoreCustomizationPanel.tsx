@@ -672,10 +672,10 @@ const StoreCustomizationPanel = ({
 
                     {/* Global Campaign Background Settings */}
                     <div className="space-y-4">
-                      <Label className="text-base font-medium">Default Campaign Background</Label>
+               {/*        <Label className="text-base font-medium">Default Campaign Background</Label> */}
                       
                       {/* Background Image Upload */}
-                      <div className="space-y-3">
+                     {/*  <div className="space-y-3">
                         <Label>Background Image</Label>
                         {campaigns.backgroundImage ? (
                           <div className="relative">
@@ -716,10 +716,10 @@ const StoreCustomizationPanel = ({
                           <Upload className="h-4 w-4 mr-2" />
                           Upload Background Image
                         </Button>
-                      </div>
+                      </div> */}
 
                       {/* Background Opacity */}
-                      {campaigns.backgroundImage && (
+                    {/*   {campaigns.backgroundImage && (
                         <div className="space-y-2">
                           <Label>Background Opacity</Label>
                           <div className="px-3">
@@ -741,18 +741,18 @@ const StoreCustomizationPanel = ({
                             This will be used as default for all campaigns
                           </p>
                         </div>
-                      )}
+                      )} */}
                     </div>
 
                     <Separator />
 
                     <div className="space-y-3">
-                      <Label>Custom Campaigns</Label>
+                      <Label>Campaigns & Banners</Label>
                       {campaigns.customCampaigns.map((campaign, index) => (
                         <Card key={index} className="p-3 border-dashed">
                           <div className="space-y-2">
                             <div className="flex items-center justify-between">
-                              <Badge variant="outline">Campaign {index + 1}</Badge>
+                              <Badge variant="outline">Campaign/Banner {index + 1}</Badge>
                               <Button 
                                 variant="ghost" 
                                 size="sm"
@@ -855,7 +855,7 @@ const StoreCustomizationPanel = ({
                                 className="w-full"
                               >
                                 <Upload className="h-3 w-3 mr-1" />
-                                Custom Background
+                                Banner Background
                               </Button>
                             </div>
 
@@ -901,7 +901,7 @@ const StoreCustomizationPanel = ({
                         className="w-full"
                       >
                         <Plus className="h-4 w-4 mr-2" />
-                        Add Campaign
+                        Add Campaign/Banner
                       </Button>
                     </div>
                   </div>

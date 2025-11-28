@@ -58,6 +58,7 @@ interface OrderWithItems extends Order {
 
 const orderStatusOptions = [
   { value: "pending", label: "Pending" },
+  { value: "paid", label: "Paid" },
   { value: "processing", label: "Processing" },
   { value: "shipped", label: "Shipped" },
   { value: "delivered", label: "Delivered" },
@@ -287,6 +288,8 @@ const OrderManagement = () => {
     switch (status) {
       case "pending":
         return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">Pending</Badge>;
+      case "paid":
+        return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Paid</Badge>;
       case "processing":
         return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Processing</Badge>;
       case "shipped":
@@ -599,14 +602,30 @@ const OrderManagement = () => {
                   </div>
                   
                   <div className="bg-gray-50 p-3 rounded">
-                    <h3 className="font-semibold mb-2">Shipping Address</h3>
-                    {typeof selectedOrder.shipping_address === 'object' ? (
-                      <div className="text-sm">
-                        <p>{(selectedOrder.shipping_address as any).address}</p>
-                        <p>{(selectedOrder.shipping_address as any).city}, {(selectedOrder.shipping_address as any).state} {(selectedOrder.shipping_address as any).zipCode}</p>
-                      </div>
+                    <h3 className="font-semibold mb-2">Fulfillment</h3>
+                    <div className="mb-2">
+                      <Badge variant="outline" className={
+                        (selectedOrder as any).fulfillment_type === 'pickup' 
+                          ? "bg-blue-50 text-blue-700 border-blue-200" 
+                          : "bg-green-50 text-green-700 border-green-200"
+                      }>
+                        {(selectedOrder as any).fulfillment_type === 'pickup' ? 'Pickup at Store' : 'Delivery'}
+                      </Badge>
+                    </div>
+                    {(selectedOrder as any).fulfillment_type === 'delivery' ? (
+                      <>
+                        <h4 className="text-xs font-medium text-gray-500 mt-2 mb-1">Shipping Address</h4>
+                        {typeof selectedOrder.shipping_address === 'object' && selectedOrder.shipping_address ? (
+                          <div className="text-sm">
+                            <p>{(selectedOrder.shipping_address as any).address}</p>
+                            <p>{(selectedOrder.shipping_address as any).city}, {(selectedOrder.shipping_address as any).state} {(selectedOrder.shipping_address as any).zipCode}</p>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-500">No address provided</p>
+                        )}
+                      </>
                     ) : (
-                      <p className="text-sm whitespace-pre-wrap">{String(selectedOrder.shipping_address)}</p>
+                      <p className="text-sm text-gray-500">Customer will collect from store</p>
                     )}
                   </div>
                 </div>
@@ -617,19 +636,25 @@ const OrderManagement = () => {
                     <CreditCard className="h-4 w-4 mr-2 text-gray-500" />
                     Payment Details
                   </h3>
+                  <div className="mb-3">
+                    <p className="text-sm text-gray-500">Payment Timing</p>
+                    <p className="text-sm font-medium">
+                      {(selectedOrder as any).payment_method === 'pod' ? 'Payment on Delivery (via Paystack)' :
+                       (selectedOrder as any).payment_method === 'pbd' ? 'Payment before Delivery (via Paystack)' :
+                       (selectedOrder as any).payment_method === 'pop' ? 'Payment on Pickup (via Paystack)' :
+                       (selectedOrder as any).payment_method === 'pbp' ? 'Payment before Pickup (via Paystack)' :
+                       'Not specified'}
+                    </p>
+                  </div>
                   {selectedOrder.payments && selectedOrder.payments.length > 0 ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <p className="text-sm text-gray-500">Payment Method</p>
-                        <p className="text-sm font-medium capitalize">{selectedOrder.payments[0].payment_method}</p>
-                      </div>
                       <div>
                         <p className="text-sm text-gray-500">Payment Date</p>
                         <p className="text-sm font-medium">{formatDate(selectedOrder.payments[0].payment_date || selectedOrder.payments[0].created_at)}</p>
                       </div>
                       <div>
                         <p className="text-sm text-gray-500">Amount</p>
-                        <p className="text-sm font-medium">${selectedOrder.payments[0].amount.toFixed(2)}</p>
+                        <p className="text-sm font-medium">KES {selectedOrder.payments[0].amount.toFixed(2)}</p>
                       </div>
                       <div>
                         <p className="text-sm text-gray-500">Status</p>
@@ -654,7 +679,19 @@ const OrderManagement = () => {
                       </div>
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-500">No payment information available</p>
+                    <div>
+                      {(selectedOrder as any).payment_method === 'pod' ? (
+                        <p className="text-sm text-blue-600">Payment will be collected via Paystack when order is delivered</p>
+                      ) : (selectedOrder as any).payment_method === 'pbd' ? (
+                        <p className="text-sm text-yellow-600">Payment required before delivery (via Paystack)</p>
+                      ) : (selectedOrder as any).payment_method === 'pop' ? (
+                        <p className="text-sm text-blue-600">Payment will be collected via Paystack when order is picked up</p>
+                      ) : (selectedOrder as any).payment_method === 'pbp' ? (
+                        <p className="text-sm text-yellow-600">Payment required before pickup (via Paystack)</p>
+                      ) : (
+                        <p className="text-sm text-gray-500">No payment information available</p>
+                      )}
+                    </div>
                   )}
                 </div>
                 

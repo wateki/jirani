@@ -759,14 +759,16 @@ const OrderManagement = () => {
                 <Button
                   disabled={statusUpdating === selectedOrder.id}
                   onClick={() => {
-                    let nextStatus = "Processing";
+                    let nextStatus = "processing";
                     
-                    if (selectedOrder.status === "Pending") {
-                      nextStatus = "Processing";
-                    } else if (selectedOrder.status === "Processing") {
-                      nextStatus = "Shipped";
-                    } else if (selectedOrder.status === "Shipped") {
-                      nextStatus = "Delivered";
+                    // Handle status transitions (using lowercase to match database)
+                    const currentStatus = selectedOrder.status.toLowerCase();
+                    if (currentStatus === "pending" || currentStatus === "paid") {
+                      nextStatus = "processing";
+                    } else if (currentStatus === "processing") {
+                      nextStatus = "shipped";
+                    } else if (currentStatus === "shipped") {
+                      nextStatus = "delivered";
                     } else {
                       return; // Don't allow further status changes after Delivered
                     }
@@ -780,11 +782,11 @@ const OrderManagement = () => {
                       Updating...
                     </>
                   ) : (
-                    selectedOrder.status === "Pending" ? (
+                    (selectedOrder.status.toLowerCase() === "pending" || selectedOrder.status.toLowerCase() === "paid") ? (
                       <>Mark as Processing</>
-                    ) : selectedOrder.status === "Processing" ? (
+                    ) : selectedOrder.status.toLowerCase() === "processing" ? (
                       <>Mark as Shipped</>
-                    ) : selectedOrder.status === "Shipped" ? (
+                    ) : selectedOrder.status.toLowerCase() === "shipped" ? (
                       <>Mark as Delivered</>
                     ) : (
                       <>Update Status</>

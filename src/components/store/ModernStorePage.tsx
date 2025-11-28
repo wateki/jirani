@@ -321,14 +321,18 @@ const ModernStorePage = ({ primaryColor, secondaryColor, storeName, storeSetting
     enableCarousel: storeSettings?.enable_hero_carousel || false,
     autoScrollSpeed: storeSettings?.hero_auto_scroll_speed || 10,
     backgroundImage: storeSettings?.hero_background_image || '',
-    backgroundOpacity: storeSettings?.hero_background_opacity || 50,
+    backgroundOpacity: typeof storeSettings?.hero_background_opacity === 'number' 
+      ? (storeSettings.hero_background_opacity > 1 ? storeSettings.hero_background_opacity / 100 : storeSettings.hero_background_opacity)
+      : 0.8, // Default to 80% if not set
     slides: safeJsonParse(storeSettings?.hero_slides, []),
     
     // Campaigns
     enableCampaigns: storeSettings?.enable_campaigns || false,
     campaignRotationSpeed: storeSettings?.campaign_rotation_speed || 5,
     campaignBackgroundImage: storeSettings?.campaign_background_image || '',
-    campaignBackgroundOpacity: storeSettings?.campaign_background_opacity || 50,
+    campaignBackgroundOpacity: typeof storeSettings?.campaign_background_opacity === 'number'
+      ? (storeSettings.campaign_background_opacity > 1 ? storeSettings.campaign_background_opacity / 100 : storeSettings.campaign_background_opacity)
+      : 0.8, // Default to 80% if not set
     customCampaigns: safeJsonParse(storeSettings?.custom_campaigns, [])
   };
 
