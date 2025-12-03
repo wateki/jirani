@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Database } from "@/integrations/supabase/types";
 import { useToast } from "@/components/ui/use-toast";
@@ -34,9 +34,9 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format, parseISO, isValid } from "date-fns";
-import { Package, Truck, CheckCircle, AlertCircle, CreditCard, ShoppingBag, Eye } from "lucide-react";
+import { Package, Truck, CheckCircle, AlertCircle, CreditCard, ShoppingBag, Eye, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 
 type Order = Database['public']['Tables']['orders']['Row'] & {
@@ -51,9 +51,29 @@ type OrderItem = Database['public']['Tables']['order_items']['Row'] & {
 
 type Payment = Database['public']['Tables']['payments']['Row'];
 
+interface PaymentTransaction {
+  id: string;
+  order_id?: string;
+  amount_fiat: number;
+  fiat_currency: string;
+  status: string;
+  payment_provider?: string;
+  payment_method?: string;
+  customer_phone?: string;
+  paystack_reference?: string;
+  paystack_transaction_id?: string;
+  paystack_metadata?: any;
+  payment_metadata?: any;
+  initiated_at?: string;
+  completed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 interface OrderWithItems extends Order {
   order_items: OrderItem[];
   payments?: Payment[];
+  payment_transactions?: PaymentTransaction[];
 }
 
 const orderStatusOptions = [
@@ -62,6 +82,7 @@ const orderStatusOptions = [
   { value: "processing", label: "Processing" },
   { value: "shipped", label: "Shipped" },
   { value: "delivered", label: "Delivered" },
+  { value: "completed", label: "Completed" },
   { value: "cancelled", label: "Cancelled" },
 ];
 
@@ -75,14 +96,76 @@ const paymentStatusOptions = [
 const OrderManagement = () => {
   const { user } = useAuth();
   const [orders, setOrders] = useState<OrderWithItems[]>([]);
-  const [filteredOrders, setFilteredOrders] = useState<OrderWithItems[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<OrderWithItems | null>(null);
   const [orderDetailsOpen, setOrderDetailsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("date-desc");
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [updatingOrder, setUpdatingOrder] = useState(false);
   const { toast } = useToast();
   const [isMobile, setIsMobile] = useState(false);
+
+  // Memoize filtered and sorted orders to prevent unnecessary rerenders
+  const filteredOrders = useMemo(() => {
+    let filtered = orders;
+
+    // Filter by status
+    if (statusFilter !== "all") {
+      filtered = filtered.filter(order => order.status === statusFilter);
+    }
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(order => {
+        // Search in order number
+        const orderNumber = (order.order_number || order.id.substring(0, 8)).toLowerCase();
+        // Search in customer name
+        const customerName = (order.customer_name || '').toLowerCase();
+        // Search in customer email
+        const customerEmail = (order.customer_email || '').toLowerCase();
+        // Search in customer phone
+        const customerPhone = (order.customer_phone || '').toLowerCase();
+        // Search in order ID
+        const orderId = order.id.toLowerCase();
+
+        return (
+          orderNumber.includes(query) ||
+          customerName.includes(query) ||
+          customerEmail.includes(query) ||
+          customerPhone.includes(query) ||
+          orderId.includes(query)
+        );
+      });
+    }
+
+    // Sort orders
+    const sorted = [...filtered].sort((a, b) => {
+      switch (sortBy) {
+        case "date-desc":
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        case "date-asc":
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        case "amount-desc":
+          const totalA = a.total_amount || parseFloat(calculateOrderTotal(a.order_items));
+          const totalB = b.total_amount || parseFloat(calculateOrderTotal(b.order_items));
+          return totalB - totalA;
+        case "amount-asc":
+          const totalA2 = a.total_amount || parseFloat(calculateOrderTotal(a.order_items));
+          const totalB2 = b.total_amount || parseFloat(calculateOrderTotal(b.order_items));
+          return totalA2 - totalB2;
+        case "customer-asc":
+          return (a.customer_name || '').localeCompare(b.customer_name || '');
+        case "customer-desc":
+          return (b.customer_name || '').localeCompare(a.customer_name || '');
+        default:
+          return 0;
+      }
+    });
+
+    return sorted;
+  }, [statusFilter, sortBy, orders, searchQuery]);
 
   // Check if viewport is mobile width
   useEffect(() => {
@@ -106,13 +189,7 @@ const OrderManagement = () => {
     }
   }, [user]);
 
-  useEffect(() => {
-    if (activeTab === "all") {
-      setFilteredOrders(orders);
-    } else {
-      setFilteredOrders(orders.filter(order => order.status === activeTab));
-    }
-  }, [activeTab, orders]);
+  // Removed useEffect for filteredOrders - now using useMemo above
 
   const fetchOrders = async () => {
     try {
@@ -157,13 +234,22 @@ const OrderManagement = () => {
           
           if (itemsError) throw itemsError;
           
-          // Fetch payment information
+          // Fetch payment information from old payments table (for backward compatibility)
           const { data: paymentsData, error: paymentsError } = await supabase
             .from('payments')
             .select('*')
             .eq('order_id', order.id);
             
           if (paymentsError) throw paymentsError;
+          
+          // Fetch payment transactions (Paystack payments)
+          const { data: paymentTransactionsData, error: paymentTransactionsError } = await supabase
+            .from('payment_transactions')
+            .select('*')
+            .eq('order_id', order.id)
+            .order('created_at', { ascending: false });
+            
+          if (paymentTransactionsError) throw paymentTransactionsError;
           
           // Map the order items to include price and quantity fields explicitly
           const mappedItems = itemsData?.map(item => ({
@@ -175,13 +261,13 @@ const OrderManagement = () => {
           return {
             ...order,
             order_items: mappedItems,
-            payments: paymentsData || []
+            payments: paymentsData || [],
+            payment_transactions: paymentTransactionsData || []
           };
         })
       );
       
       setOrders(ordersWithItems);
-      setFilteredOrders(ordersWithItems);
     } catch (error) {
       console.error('Error fetching orders:', error);
       toast({
@@ -194,10 +280,11 @@ const OrderManagement = () => {
     }
   };
 
-  const handleViewOrder = (order: OrderWithItems) => {
+  // Memoize handleViewOrder to prevent unnecessary rerenders
+  const handleViewOrder = useCallback((order: OrderWithItems) => {
     setSelectedOrder(order);
     setOrderDetailsOpen(true);
-  };
+  }, []);
 
   const handleUpdateOrderStatus = async (orderId: string, status: string) => {
     try {
@@ -296,6 +383,8 @@ const OrderManagement = () => {
         return <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">Shipped</Badge>;
       case "delivered":
         return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Delivered</Badge>;
+      case "completed":
+        return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">Completed</Badge>;
       case "cancelled":
         return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">Cancelled</Badge>;
       default:
@@ -322,14 +411,18 @@ const OrderManagement = () => {
     switch (status) {
       case "pending":
         return <AlertCircle className="h-5 w-5 text-yellow-500" />;
+      case "paid":
+        return <CheckCircle className="h-5 w-5 text-green-500" />;
       case "processing":
         return <Package className="h-5 w-5 text-blue-500" />;
       case "shipped":
         return <Truck className="h-5 w-5 text-purple-500" />;
       case "delivered":
         return <CheckCircle className="h-5 w-5 text-green-500" />;
+      case "completed":
+        return <CheckCircle className="h-5 w-5 text-emerald-500" />;
       default:
-        return null;
+        return <Package className="h-5 w-5 text-gray-500" />;
     }
   };
 
@@ -399,12 +492,15 @@ const OrderManagement = () => {
     return (
       <div className="space-y-4">
         {filteredOrders.map((order) => {
-          const paymentStatus = order.payments && order.payments.length > 0 
-            ? order.payments[0].status 
-            : 'pending';
+          // Use order.payment_status directly (stored on order table)
+          const paymentStatus = (order as any).payment_status || 'pending';
           
           return (
-            <Card key={order.id} className="p-4">
+            <Card 
+              key={order.id} 
+              className="p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+              onClick={() => handleViewOrder(order)}
+            >
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <h3 className="font-medium text-sm">#{order.order_number || order.id.substring(0, 8)}</h3>
@@ -432,7 +528,7 @@ const OrderManagement = () => {
                 </div>
               </div>
               
-              <div className="flex justify-end">
+              <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
                 <Button 
                   variant="ghost" 
                   size="sm"
@@ -467,15 +563,57 @@ const OrderManagement = () => {
           <CardDescription>
             View and manage all orders placed in your store
           </CardDescription>
-          <Tabs defaultValue="all" value={activeTab} onValueChange={setActiveTab} className="mt-4">
-            <TabsList className="grid grid-cols-5 sm:w-[500px]">
-              <TabsTrigger value="all">All</TabsTrigger>
-              <TabsTrigger value="pending">Pending</TabsTrigger>
-              <TabsTrigger value="processing">Processing</TabsTrigger>
-              <TabsTrigger value="shipped">Shipped</TabsTrigger>
-              <TabsTrigger value="delivered">Delivered</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          
+          {/* Search and Filters */}
+          <div className="mt-4 flex flex-col sm:flex-row gap-3">
+            {/* Search Input */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="Search by order number, customer name, email, or phone..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+
+            {/* Status Filter */}
+            <div className="w-full sm:w-48">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="paid">Paid</SelectItem>
+                  <SelectItem value="processing">Processing</SelectItem>
+                  <SelectItem value="shipped">Shipped</SelectItem>
+                  <SelectItem value="delivered">Delivered</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Sort By */}
+            <div className="w-full sm:w-48">
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="date-desc">Date (Newest First)</SelectItem>
+                  <SelectItem value="date-asc">Date (Oldest First)</SelectItem>
+                  <SelectItem value="amount-desc">Amount (High to Low)</SelectItem>
+                  <SelectItem value="amount-asc">Amount (Low to High)</SelectItem>
+                  <SelectItem value="customer-asc">Customer (A-Z)</SelectItem>
+                  <SelectItem value="customer-desc">Customer (Z-A)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {isMobile ? renderMobileCards() : (
@@ -527,12 +665,15 @@ const OrderManagement = () => {
                     </TableRow>
                   ) : (
                     filteredOrders.map((order) => {
-                    const paymentStatus = order.payments && order.payments.length > 0 
-                      ? order.payments[0].status 
-                      : 'pending';
+                    // Use order.payment_status directly (stored on order table)
+                    const paymentStatus = (order as any).payment_status || 'pending';
                     
                     return (
-                      <TableRow key={order.id}>
+                      <TableRow 
+                        key={order.id}
+                        onClick={() => handleViewOrder(order)}
+                        className="cursor-pointer hover:bg-gray-50 transition-colors"
+                      >
                           <TableCell className="font-medium px-2 md:px-4">
                             <span className="text-xs md:text-sm">#{order.order_number || order.id.substring(0, 8)}</span>
                           </TableCell>
@@ -553,7 +694,7 @@ const OrderManagement = () => {
                               KES {order.total_amount?.toFixed(2) || calculateOrderTotal(order.order_items)}
                             </span>
                           </TableCell>
-                          <TableCell className="px-1 md:px-4">
+                          <TableCell className="px-1 md:px-4" onClick={(e) => e.stopPropagation()}>
                           <Button 
                             variant="ghost" 
                             size="sm" 
@@ -616,11 +757,11 @@ const OrderManagement = () => {
                       <>
                         <h4 className="text-xs font-medium text-gray-500 mt-2 mb-1">Shipping Address</h4>
                         {typeof selectedOrder.shipping_address === 'object' && selectedOrder.shipping_address ? (
-                          <div className="text-sm">
-                            <p>{(selectedOrder.shipping_address as any).address}</p>
-                            <p>{(selectedOrder.shipping_address as any).city}, {(selectedOrder.shipping_address as any).state} {(selectedOrder.shipping_address as any).zipCode}</p>
-                          </div>
-                        ) : (
+                      <div className="text-sm">
+                        <p>{(selectedOrder.shipping_address as any).address}</p>
+                        <p>{(selectedOrder.shipping_address as any).city}, {(selectedOrder.shipping_address as any).state} {(selectedOrder.shipping_address as any).zipCode}</p>
+                      </div>
+                    ) : (
                           <p className="text-sm text-gray-500">No address provided</p>
                         )}
                       </>
@@ -632,12 +773,14 @@ const OrderManagement = () => {
                 
                 {/* Payment Details Section */}
                 <div className="bg-gray-50 p-3 rounded">
-                  <h3 className="font-semibold mb-2 flex items-center">
+                  <h3 className="font-semibold mb-3 flex items-center">
                     <CreditCard className="h-4 w-4 mr-2 text-gray-500" />
                     Payment Details
                   </h3>
-                  <div className="mb-3">
-                    <p className="text-sm text-gray-500">Payment Timing</p>
+                  
+                  {/* Payment Timing/Method */}
+                  <div className="mb-4 pb-3 border-b">
+                    <p className="text-sm text-gray-500 mb-1">Payment Timing</p>
                     <p className="text-sm font-medium">
                       {(selectedOrder as any).payment_method === 'pod' ? 'Payment on Delivery (via Paystack)' :
                        (selectedOrder as any).payment_method === 'pbd' ? 'Payment before Delivery (via Paystack)' :
@@ -646,18 +789,119 @@ const OrderManagement = () => {
                        'Not specified'}
                     </p>
                   </div>
-                  {selectedOrder.payments && selectedOrder.payments.length > 0 ? (
+
+                  {/* Payment Transaction Details */}
+                  {selectedOrder.payment_transactions && selectedOrder.payment_transactions.length > 0 ? (
+                    selectedOrder.payment_transactions.map((paymentTx) => {
+                      const paystackData = paymentTx.paystack_metadata?.transaction_data || paymentTx.payment_metadata?.paystack_data;
+                      const paymentChannel = paystackData?.channel || 'Unknown';
+                      const paymentTime = paymentTx.completed_at || paymentTx.initiated_at || paymentTx.created_at;
+                      
+                      return (
+                        <div key={paymentTx.id} className="space-y-3">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <p className="text-sm text-gray-500">Payment Date</p>
+                              <p className="text-sm text-gray-500 mb-1">Amount</p>
+                              <p className="text-sm font-semibold">
+                                {paymentTx.amount_fiat.toLocaleString()} {paymentTx.fiat_currency || 'KES'}
+                              </p>
+                      </div>
+                      <div>
+                              <p className="text-sm text-gray-500 mb-1">Status</p>
+                              <div className="mt-1">
+                                {getPaymentStatusBadge(paymentTx.status)}
+                              </div>
+                            </div>
+                            <div>
+                              <p className="text-sm text-gray-500 mb-1">Payment Method</p>
+                              <p className="text-sm font-medium capitalize">
+                                {paymentChannel === 'card' ? 'Card Payment' :
+                                 paymentChannel === 'bank' ? 'Bank Transfer' :
+                                 paymentChannel === 'ussd' ? 'USSD' :
+                                 paymentChannel === 'qr' ? 'QR Code' :
+                                 paymentChannel === 'mobile_money' ? 'Mobile Money' :
+                                 paymentTx.payment_method || paymentChannel || 'Paystack'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-sm text-gray-500 mb-1">Mobile Number</p>
+                              <p className="text-sm font-medium">
+                                {(() => {
+                                  const customerPhone = selectedOrder.customer_phone || '';
+                                  const paymentPhone = paymentTx.customer_phone || '';
+                                  const normalizedCustomer = customerPhone.replace(/\s+/g, '').replace(/^\+/, '');
+                                  const normalizedPayment = paymentPhone.replace(/\s+/g, '').replace(/^\+/, '');
+                                  const isSame = normalizedCustomer && normalizedPayment && normalizedCustomer === normalizedPayment;
+                                  
+                                  if (isSame) {
+                                    return (
+                                      <span>
+                                        {customerPhone || paymentPhone} <span className="text-emerald-600 text-xs">(same)</span>
+                                      </span>
+                                    );
+                                  } else if (customerPhone && paymentPhone) {
+                                    return (
+                                      <span>
+                                        {customerPhone} <span className="text-gray-400">({paymentPhone})</span>
+                                      </span>
+                                    );
+                                  } else if (paymentPhone) {
+                                    return paymentPhone;
+                                  } else if (customerPhone) {
+                                    return customerPhone;
+                                  } else {
+                                    return <span className="text-gray-400">Not available</span>;
+                                  }
+                                })()}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-sm text-gray-500 mb-1">Initiated At</p>
+                              <p className="text-sm font-medium">
+                                {paymentTx.initiated_at ? formatDate(paymentTx.initiated_at) : formatDate(paymentTx.created_at)}
+                              </p>
+                            </div>
+                            {paymentTx.completed_at && (
+                              <div>
+                                <p className="text-sm text-gray-500 mb-1">Completed At</p>
+                                <p className="text-sm font-medium">
+                                  {formatDate(paymentTx.completed_at)}
+                                </p>
+                              </div>
+                            )}
+                            {paymentTx.paystack_reference && (
+                              <div>
+                                <p className="text-sm text-gray-500 mb-1">Paystack Reference</p>
+                                <p className="text-sm font-mono text-xs break-all">
+                                  {paymentTx.paystack_reference}
+                                </p>
+                              </div>
+                            )}
+                            {paymentTx.paystack_transaction_id && (
+                              <div>
+                                <p className="text-sm text-gray-500 mb-1">Transaction ID</p>
+                                <p className="text-sm font-mono text-xs break-all">
+                                  {paymentTx.paystack_transaction_id}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : selectedOrder.payments && selectedOrder.payments.length > 0 ? (
+                    // Fallback to old payments table if no payment_transactions
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-sm text-gray-500 mb-1">Payment Date</p>
                         <p className="text-sm font-medium">{formatDate(selectedOrder.payments[0].payment_date || selectedOrder.payments[0].created_at)}</p>
                       </div>
                       <div>
-                        <p className="text-sm text-gray-500">Amount</p>
+                        <p className="text-sm text-gray-500 mb-1">Amount</p>
                         <p className="text-sm font-medium">KES {selectedOrder.payments[0].amount.toFixed(2)}</p>
                       </div>
                       <div>
-                        <p className="text-sm text-gray-500">Status</p>
+                        <p className="text-sm text-gray-500 mb-1">Status</p>
                         <div className="mt-1">
                           <Select
                             disabled={updatingOrder}
@@ -688,8 +932,8 @@ const OrderManagement = () => {
                         <p className="text-sm text-blue-600">Payment will be collected via Paystack when order is picked up</p>
                       ) : (selectedOrder as any).payment_method === 'pbp' ? (
                         <p className="text-sm text-yellow-600">Payment required before pickup (via Paystack)</p>
-                      ) : (
-                        <p className="text-sm text-gray-500">No payment information available</p>
+                  ) : (
+                    <p className="text-sm text-gray-500">No payment information available</p>
                       )}
                     </div>
                   )}

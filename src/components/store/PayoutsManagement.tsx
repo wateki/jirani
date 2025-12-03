@@ -228,77 +228,135 @@ const PayoutsManagement = () => {
 
       setStoreSettings(storeData);
 
-      // For demonstration purposes, create mock wallet data since the tables don't exist yet
-      // In a real implementation, this would fetch from actual tables
-      const mockWallet: Wallet = {
-        id: crypto.randomUUID(),
+      // Fetch wallet data from store_wallets table
+      let currentWallet: Wallet | null = null;
+      
+      const { data: walletData, error: walletError } = await supabase
+        .from('store_wallets')
+        .select('*')
+        .eq('store_id', storeData.id)
+        .single();
+
+      if (walletError && walletError.code === 'PGRST116') {
+        // Wallet doesn't exist, create one with zero balance
+        const { data: newWallet, error: createError } = await supabase
+          .from('store_wallets')
+          .insert({
         user_id: user.id,
         store_id: storeData.id,
-        available_balance: 1250.75,
-        pending_balance: 320.50,
-        total_earnings: 3750.25,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      
-      setWallet(mockWallet);
-      
-      // Create mock transaction data
-      const mockTransactions: WalletTransaction[] = [
-        {
-          id: crypto.randomUUID(),
-          wallet_id: mockWallet.id,
-          transaction_type: 'order_payment',
-          amount: 150.00,
-          description: 'Payment for order #ORD-12345',
-          status: 'completed',
-          created_at: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-        },
-        {
-          id: crypto.randomUUID(),
-          wallet_id: mockWallet.id,
-          transaction_type: 'payout',
-          amount: 500.00,
-          description: 'Payout request: PO-78901',
-          status: 'completed',
-          created_at: new Date(Date.now() - 345600000).toISOString(), // 4 days ago
-        },
-        {
-          id: crypto.randomUUID(),
-          wallet_id: mockWallet.id,
-          transaction_type: 'order_payment',
-          amount: 75.50,
-          description: 'Payment for order #ORD-12346',
-          status: 'completed',
-          created_at: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
+            available_balance: 0,
+            pending_balance: 0,
+            total_earnings: 0,
+          })
+          .select()
+          .single();
+
+        if (createError) {
+          console.error('Error creating wallet:', createError);
+          toast({
+            title: "Error",
+            description: "Unable to initialize wallet",
+            variant: "destructive",
+          });
+          setLoading(false);
+          return;
         }
-      ];
-      
-      setTransactions(mockTransactions);
-      
-      // Create mock payout data
-      const mockPayouts: Payout[] = [
-        {
-          id: crypto.randomUUID(),
-          wallet_id: mockWallet.id,
-          user_id: user.id,
-          amount: 500.00,
-          payout_method: 'bank_transfer',
-          status: 'completed',
-          recipient_details: {
-            accountName: 'John Doe',
-            accountNumber: '1234567890',
-            bankName: 'Example Bank',
-            bankCode: 'EXBK123'
-          },
-          reference_code: 'PO-78901',
-          created_at: new Date(Date.now() - 345600000).toISOString(), // 4 days ago
-          processed_at: new Date(Date.now() - 259200000).toISOString(), // 3 days ago
-          completed_at: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
+
+        currentWallet = {
+          id: newWallet.id,
+          user_id: newWallet.user_id,
+          store_id: newWallet.store_id,
+          available_balance: Number(newWallet.available_balance || 0),
+          pending_balance: Number(newWallet.pending_balance || 0),
+          total_earnings: Number(newWallet.total_earnings || 0),
+          created_at: newWallet.created_at || new Date().toISOString(),
+          updated_at: newWallet.updated_at || new Date().toISOString(),
+        };
+      } else if (walletError) {
+        console.error('Error fetching wallet:', walletError);
+        toast({
+          title: "Error",
+          description: "Unable to fetch wallet information",
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
+      } else if (walletData) {
+        currentWallet = {
+          id: walletData.id,
+          user_id: walletData.user_id,
+          store_id: walletData.store_id,
+          available_balance: Number(walletData.available_balance || 0),
+          pending_balance: Number(walletData.pending_balance || 0),
+          total_earnings: Number(walletData.total_earnings || 0),
+          created_at: walletData.created_at || new Date().toISOString(),
+          updated_at: walletData.updated_at || new Date().toISOString(),
+        };
+      }
+
+      if (currentWallet) {
+        setWallet(currentWallet);
+
+        // Sync wallet from payment transactions (backfill all statuses if needed)
+        const { error: syncError } = await supabase.rpc('backfill_all_payments_to_wallet', {
+          p_store_id: storeData.id
+        });
+
+        if (syncError) {
+          console.warn('Error syncing wallet from payments (non-critical):', syncError);
         }
-      ];
-      
-      setPayouts(mockPayouts);
+
+        // Fetch wallet transactions
+        const { data: transactionsData, error: transactionsError } = await supabase
+          .from('wallet_transactions')
+          .select('*')
+          .eq('wallet_id', currentWallet.id)
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (!transactionsError && transactionsData) {
+          setTransactions(transactionsData.map(tx => ({
+            id: tx.id,
+            wallet_id: tx.wallet_id,
+            order_id: tx.order_id || undefined,
+            transaction_type: tx.transaction_type,
+            amount: Number(tx.amount),
+            description: tx.description || '',
+            status: tx.status,
+            created_at: tx.created_at || new Date().toISOString(),
+            metadata: tx.metadata || {},
+          })));
+        } else if (transactionsError) {
+          console.error('Error fetching transactions:', transactionsError);
+        }
+
+        // Fetch payouts
+        const { data: payoutsData, error: payoutsError } = await supabase
+          .from('payouts')
+          .select('*')
+          .eq('wallet_id', currentWallet.id)
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (!payoutsError && payoutsData) {
+          setPayouts(payoutsData.map(payout => ({
+            id: payout.id,
+            wallet_id: payout.wallet_id,
+            user_id: payout.user_id,
+            amount: Number(payout.amount),
+            payout_method: payout.payout_method,
+            status: payout.status,
+            recipient_details: payout.recipient_details || {},
+            reference_code: payout.reference_code || undefined,
+            notes: payout.notes || undefined,
+            created_at: payout.created_at || new Date().toISOString(),
+            processed_at: payout.processed_at || undefined,
+            completed_at: payout.completed_at || undefined,
+          })));
+        } else if (payoutsError) {
+          console.error('Error fetching payouts:', payoutsError);
+        }
+      }
 
     } catch (error) {
       console.error('Error fetching wallet data:', error);
@@ -583,18 +641,35 @@ const PayoutsManagement = () => {
                               </TableRow>
                             </TableHeader>
                             <TableBody>
-                              {transactions.slice(0, 5).map((transaction) => (
+                              {transactions.slice(0, 5).map((transaction) => {
+                                const paymentStatus = (transaction.metadata as any)?.payment_status;
+                                const paymentProvider = (transaction.metadata as any)?.payment_provider;
+                                const displayDescription = paymentStatus && paymentProvider 
+                                  ? `${transaction.description} (${paymentProvider}: ${paymentStatus})`
+                                  : transaction.description;
+                                
+                                return (
                                 <TableRow key={transaction.id}>
                                   <TableCell>{formatDate(transaction.created_at)}</TableCell>
-                                  <TableCell>{transaction.description}</TableCell>
+                                    <TableCell>
+                                      <div className="flex flex-col">
+                                        <span>{transaction.description}</span>
+                                        {paymentStatus && (
+                                          <span className="text-xs text-gray-500">
+                                            {paymentProvider || 'Payment'}: {paymentStatus}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </TableCell>
                                   <TableCell>{getTransactionTypeBadge(transaction.transaction_type)}</TableCell>
                                   <TableCell>{getTransactionStatusBadge(transaction.status)}</TableCell>
-                                  <TableCell className={`text-right font-medium ${transaction.transaction_type === 'payout' || transaction.transaction_type === 'refund' ? 'text-red-600' : 'text-green-600'}`}>
-                                    {transaction.transaction_type === 'payout' || transaction.transaction_type === 'refund' ? '-' : '+'}
+                                    <TableCell className={`text-right font-medium ${transaction.transaction_type === 'payout' || transaction.transaction_type === 'refund' ? 'text-red-600' : transaction.status === 'completed' ? 'text-green-600' : 'text-gray-600'}`}>
+                                      {transaction.transaction_type === 'payout' || transaction.transaction_type === 'refund' ? '-' : transaction.status === 'completed' ? '+' : ''}
                                     {formatCurrency(transaction.amount)}
                                   </TableCell>
                                 </TableRow>
-                              ))}
+                                );
+                              })}
                             </TableBody>
                           </Table>
                         </div>
@@ -678,18 +753,34 @@ const PayoutsManagement = () => {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {transactions.map((transaction) => (
+                          {transactions.map((transaction) => {
+                            const paymentStatus = (transaction.metadata as any)?.payment_status;
+                            const paymentProvider = (transaction.metadata as any)?.payment_provider;
+                            const paystackReference = (transaction.metadata as any)?.paystack_reference;
+                            
+                            return (
                             <TableRow key={transaction.id}>
                               <TableCell>{formatDate(transaction.created_at)}</TableCell>
-                              <TableCell>{transaction.description}</TableCell>
+                                <TableCell>
+                                  <div className="flex flex-col">
+                                    <span>{transaction.description}</span>
+                                    {paymentStatus && (
+                                      <span className="text-xs text-gray-500">
+                                        {paymentProvider || 'Payment'}: {paymentStatus}
+                                        {paystackReference && ` • Ref: ${paystackReference}`}
+                                      </span>
+                                    )}
+                                  </div>
+                                </TableCell>
                               <TableCell>{getTransactionTypeBadge(transaction.transaction_type)}</TableCell>
                               <TableCell>{getTransactionStatusBadge(transaction.status)}</TableCell>
-                              <TableCell className={`text-right font-medium ${transaction.transaction_type === 'payout' || transaction.transaction_type === 'refund' ? 'text-red-600' : 'text-green-600'}`}>
-                                {transaction.transaction_type === 'payout' || transaction.transaction_type === 'refund' ? '-' : '+'}
+                                <TableCell className={`text-right font-medium ${transaction.transaction_type === 'payout' || transaction.transaction_type === 'refund' ? 'text-red-600' : transaction.status === 'completed' ? 'text-green-600' : 'text-gray-600'}`}>
+                                  {transaction.transaction_type === 'payout' || transaction.transaction_type === 'refund' ? '-' : transaction.status === 'completed' ? '+' : ''}
                                 {formatCurrency(transaction.amount)}
                               </TableCell>
                             </TableRow>
-                          ))}
+                            );
+                          })}
                         </TableBody>
                       </Table>
                     </div>

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/components/ui/use-toast";
@@ -561,14 +562,14 @@ const StoreCustomizer = () => {
               <Button variant="ghost" asChild className="mr-2 md:mr-4 p-2 md:p-3">
                 <Link to="/dashboard">
                   <ArrowLeft className="h-4 w-4 mr-1 md:mr-2" />
-                  <span className="hidden sm:inline">Back to Dashboard</span>
+                  <span className="hidden sm:inline">Dashboard</span>
                   <span className="sm:hidden">Back</span>
                 </Link>
               </Button>
               <div>
                 <h1 className="text-lg md:text-xl font-semibold">Store Customization</h1>
-                <p className="text-gray-500 text-xs md:text-sm hidden sm:block">
-                  Customize your store's appearance and features
+                <p className="text-gray-500 text-xs md:text-sm hidden sm:inline">
+                  Sell online with your own Jirani website
                 </p>
               </div>
             </div>
@@ -589,9 +590,17 @@ const StoreCustomizer = () => {
       </header>
 
       <div className="container mx-auto px-4 py-4 md:py-8">
-        <div className="flex flex-col lg:grid lg:grid-cols-2 gap-4 md:gap-8 min-h-[calc(100vh-120px)] md:min-h-[calc(100vh-180px)]">
-          {/* Customization Panel */}
-          <div className="order-2 lg:order-1 min-h-[60vh] lg:min-h-auto">
+        <Tabs defaultValue="customize" className="w-full min-h-[calc(100vh-120px)] md:min-h-[calc(100vh-180px)]">
+          <TabsList className="grid w-full max-w-md mx-auto mb-4 md:mb-6 grid-cols-2">
+            <TabsTrigger value="customize" className="text-sm md:text-base">
+              Customize Website
+            </TabsTrigger>
+            <TabsTrigger value="preview" className="text-sm md:text-base">
+              Preview Website
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="customize" className="mt-0 min-h-[calc(100vh-200px)] md:min-h-[calc(100vh-250px)]">
             <StoreCustomizationPanel
               storeInfo={storeInfo}
               colors={colors}
@@ -603,7 +612,6 @@ const StoreCustomizer = () => {
               onDesignChange={handleDesignChange}
               onCampaignChange={handleCampaignChange}
               onHeroCarouselChange={handleHeroCarouselChange}
-
               onLogoImageUpload={handleLogoImageUpload}
               onCampaignBackgroundUpload={handleCampaignBackgroundUpload}
               onHeroBackgroundUpload={handleHeroBackgroundUpload}
@@ -614,10 +622,9 @@ const StoreCustomizer = () => {
               isPublishing={publishing}
               isSaving={saving}
             />
-          </div>
+          </TabsContent>
 
-          {/* Preview Container */}
-          <div className="order-1 lg:order-2 min-h-[40vh] lg:min-h-auto">
+          <TabsContent value="preview" className="mt-0 min-h-[calc(100vh-200px)] md:min-h-[calc(100vh-250px)]">
             <StorePreviewContainer
               storeInfo={storeInfo}
               colors={colors}
@@ -625,8 +632,8 @@ const StoreCustomizer = () => {
               campaigns={campaigns}
               heroCarousel={heroCarousel}
             />
-          </div>
-        </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
