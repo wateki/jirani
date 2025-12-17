@@ -18,6 +18,8 @@ import SubdomainStoreFront from "@/components/store/SubdomainStoreFront";
 import LoginPage from "./components/LoginPage";
 import SignupPage from "./components/SignupPage";
 import CustomerLoginPage from "@/components/store/CustomerLoginPage";
+import MarketplaceHomepage from "@/components/marketplace/MarketplaceHomepage";
+import BrowseStoresPage from "@/components/marketplace/BrowseStoresPage";
 /* import OrderManagement from "./components/store/OrderManagement";
 import PayoutsManagement from "./components/store/PayoutsManagement"; */
 import NotFound from "./pages/NotFound";
@@ -119,6 +121,16 @@ const Root = () => {
                 <Route path="/" element={<Index />} />
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/signup" element={<SignupPage />} />
+                <Route path="/marketplace" element={
+                  <CustomerAuthProvider>
+                    <MarketplaceHomepage />
+                  </CustomerAuthProvider>
+                } />
+                <Route path="/marketplace/stores" element={
+                  <CustomerAuthProvider>
+                    <BrowseStoresPage />
+                  </CustomerAuthProvider>
+                } />
                 <Route path="/customer/login" element={
                   <CustomerAuthProvider>
                     <CustomerLoginPage />

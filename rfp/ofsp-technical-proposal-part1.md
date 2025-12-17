@@ -304,6 +304,16 @@ The platform must serve as a **digital coordination hub** that:
 
 ### 3.1 High-Level Architecture
 
+The OFSP Digital Marketplace Platform follows a **multi-channel, microservices-based architecture** designed to ensure universal access, scalability, and maintainability. The system is structured in three primary layers: **Access Layer** (multiple user interfaces), **Application Layer** (business logic and services), and **Data Layer** (persistent storage and caching).
+
+**Access Layer:** The platform provides three distinct access channels to accommodate different user capabilities and device types. Smartphone users access a Progressive Web App (PWA) that offers native-like functionality with offline capabilities. Desktop and laptop users interact through a responsive web application optimized for larger screens. Feature phone users, who represent a significant portion of rural farmers, access core functionality through a USSD gateway using simple menu navigation.
+
+**Application Layer:** All access channels converge at a unified API Gateway that handles authentication, request routing, and rate limiting. The gateway routes authenticated requests to specialized microservices, each responsible for a specific domain: user management, marketplace operations, aggregation center inventory tracking, peer monitoring and analytics, notifications, and administrative dashboards. This microservices approach ensures that each component can be developed, deployed, and scaled independently while maintaining clear separation of concerns.
+
+**Data Layer:** All services interact with a robust data layer consisting of PostgreSQL for transactional data persistence, Redis for session management and real-time caching, and cloud storage (S3/Cloudinary) for images and documents. This architecture ensures data consistency, high performance, and reliable file storage while supporting the platform's real-time requirements.
+
+The following diagram illustrates the complete architecture flow from user access points through to data storage:
+
 ```mermaid
 flowchart TD
     Users[User Access Points] --> Channels{Access Channels}
@@ -343,6 +353,8 @@ flowchart TD
     style Services fill:#f0e1ff
     style Data fill:#e1ffe1
 ```
+
+This architecture ensures **high availability**, **scalability**, and **flexibility** by decoupling frontend interfaces from backend services. The API Gateway acts as a single entry point, enabling consistent security policies, request validation, and monitoring across all access channels. The microservices architecture allows individual components to be updated or scaled without affecting the entire system, while the layered data approach optimizes performance through intelligent caching and efficient storage strategies.
 
 ### 3.2 System Components
 
@@ -528,36 +540,9 @@ flowchart TD
 | **Log Retention** | 50% storage | Keep only 30 days of logs |
 | **Spot Instances (Workers)** | 70% | Use spot instances for non-critical background jobs |
 
-**Estimated Monthly Infrastructure Cost:**
 
-| Item | Cost (USD) | Cost (KES) |
-|------|------------|------------|
-| **Web Servers (2-5 instances)** | $50-150 | 6,500-19,500 |
-| **API Servers (2-5 instances)** | $50-150 | 6,500-19,500 |
-| **Database (Primary + 2 Replicas)** | $150-250 | 19,500-32,500 |
-| **Redis Cache (3 instances)** | $30-50 | 3,900-6,500 |
-| **Load Balancers** | $30 | 3,900 |
-| **Storage (S3 / Cloudinary)** | $20-50 | 2,600-6,500 |
-| **Data Transfer** | $20-40 | 2,600-5,200 |
-| **Monitoring (Datadog/Sentry)** | $30-60 | 3,900-7,800 |
-| **CDN (Cloudflare)** | $20-40 | 2,600-5,200 |
-| **Backups** | $10-20 | 1,300-2,600 |
-| **SMS & USSD** | $50-100 | 6,500-13,000 |
-| **Payment Gateway Fees** | Variable | Based on transaction volume |
-| **Domain & SSL** | $10 | 1,300 |
-| **Contingency (10%)** | $50-100 | 6,500-13,000 |
-| **Total Estimated** | **$520-1,060** | **67,600-137,800** |
 
-*Note: Costs scale with usage. Lower in early stages, higher with more users.*
 
-**Capacity Planning:**
-
-| Users | API Requests/Day | Database Size | Bandwidth | Infrastructure Cost (Monthly) |
-|-------|------------------|---------------|-----------|-------------------------------|
-| **500 farmers** | 50,000 | 10 GB | 100 GB | ~$500-700 (~KES 65,000-91,000) |
-| **1,000 farmers** | 100,000 | 25 GB | 200 GB | ~$700-900 (~KES 91,000-117,000) |
-| **2,000 farmers** | 200,000 | 50 GB | 400 GB | ~$900-1,200 (~KES 117,000-156,000) |
-| **5,000 farmers** | 500,000 | 125 GB | 1 TB | ~$1,500-2,000 (~KES 195,000-260,000) |
 
 ---
 

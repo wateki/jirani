@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Monitor, Tablet, Smartphone, ExternalLink } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import ModernStoreTemplate, { StoreCustomization } from "./store/ModernStoreTemplate";
 
 interface StorePreviewContainerProps {
@@ -56,7 +56,37 @@ const StorePreviewContainer = ({
   campaigns,
   heroCarousel
 }: StorePreviewContainerProps) => {
-  const [viewport, setViewport] = useState<ViewportType>('desktop');
+  // Automatically detect viewport based on current window size
+  const [viewport, setViewport] = useState<ViewportType>(() => {
+    // Initial detection
+    if (typeof window !== 'undefined') {
+      const width = window.innerWidth;
+      if (width < 768) return 'mobile';
+      if (width < 1024) return 'tablet';
+      return 'desktop';
+    }
+    return 'desktop';
+  });
+
+  // Update viewport when window is resized
+  useEffect(() => {
+    const handleResize = () => {
+      const width = window.innerWidth;
+      if (width < 768) {
+        setViewport('mobile');
+      } else if (width < 1024) {
+        setViewport('tablet');
+      } else {
+        setViewport('desktop');
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    // Check on mount
+    handleResize();
+
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Convert props to StoreCustomization format
   const customization: StoreCustomization = {
@@ -90,27 +120,6 @@ const StorePreviewContainer = ({
     customCampaigns: campaigns.customCampaigns
   };
 
-  const getViewportClasses = () => {
-    switch (viewport) {
-      case 'tablet':
-        return 'max-w-2xl mx-auto';
-      case 'mobile':
-        return 'max-w-sm mx-auto';
-      default:
-        return 'w-full';
-    }
-  };
-
-  const getViewportScale = () => {
-    switch (viewport) {
-      case 'tablet':
-        return 'scale-75';
-      case 'mobile':
-        return 'scale-50';
-      default:
-        return 'scale-100';
-    }
-  };
 
   const publishedStoreUrl = `${window.location.origin}/store/${storeInfo.storeSlug}`;
 
@@ -121,38 +130,9 @@ const StorePreviewContainer = ({
         <div className="flex flex-col space-y-3 md:space-y-0 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center space-x-2 md:space-x-4">
             <h3 className="text-base md:text-lg font-semibold text-gray-900">Store Preview</h3>
-            <div className="flex items-center space-x-1 md:space-x-2">
-              <Button
-                variant={viewport === 'desktop' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setViewport('desktop')}
-                className="flex items-center text-xs md:text-sm px-2 md:px-3"
-              >
-                <Monitor className="h-3 w-3 md:h-4 md:w-4 mr-1" />
-                <span className="hidden sm:inline">Desktop</span>
-                <span className="sm:hidden">Desk</span>
-              </Button>
-              <Button
-                variant={viewport === 'tablet' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setViewport('tablet')}
-                className="flex items-center text-xs md:text-sm px-2 md:px-3"
-              >
-                <Tablet className="h-3 w-3 md:h-4 md:w-4 mr-1" />
-                <span className="hidden sm:inline">Tablet</span>
-                <span className="sm:hidden">Tab</span>
-              </Button>
-              <Button
-                variant={viewport === 'mobile' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setViewport('mobile')}
-                className="flex items-center text-xs md:text-sm px-2 md:px-3"
-              >
-                <Smartphone className="h-3 w-3 md:h-4 md:w-4 mr-1" />
-                <span className="hidden sm:inline">Mobile</span>
-                <span className="sm:hidden">Mob</span>
-              </Button>
-            </div>
+            <Badge variant="secondary" className="bg-blue-100 text-blue-800 text-xs capitalize">
+              {viewport} view
+            </Badge>
           </div>
           
           <div className="flex items-center space-x-2 md:space-x-3">
@@ -175,14 +155,8 @@ const StorePreviewContainer = ({
 
       {/* Preview Content */}
       <div className="flex-1 overflow-auto p-3 md:p-6">
-        <div className={`transition-all duration-300 ${getViewportClasses()}`}>
-          <div 
-            className={`bg-white rounded-lg shadow-lg overflow-hidden border ${getViewportScale()} transition-transform duration-300 origin-top`}
-            style={{ 
-              height: viewport === 'mobile' ? '400px' : viewport === 'tablet' ? '500px' : '600px',
-              minWidth: viewport === 'mobile' ? '280px' : viewport === 'tablet' ? '400px' : '600px'
-            }}
-          >
+        <div className="w-full h-full">
+          <div className="bg-white rounded-lg shadow-lg overflow-hidden border w-full h-full">
             <div className="h-full overflow-auto">
               <ModernStoreTemplate
                 customization={customization}

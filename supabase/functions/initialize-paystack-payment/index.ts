@@ -92,7 +92,40 @@ Deno.serve(async (req: Request) => {
 
     // Generate unique reference
     const reference = generateReference();
-    const amountInSubunit = convertToSubunit(amount, currency);
+    
+    // Validate and convert amount to Paystack subunit format
+    // Frontend sends amount in main currency units (e.g., 1940 KES)
+    // Paystack requires amounts in smallest currency unit (e.g., 194000 for 1940 KES)
+    const amountNumber = Number(amount);
+    
+    if (isNaN(amountNumber) || amountNumber <= 0) {
+      return new Response(
+        JSON.stringify({
+          error: "Invalid amount: amount must be a positive number",
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    
+    const amountInSubunit = convertToSubunit(amountNumber, currency);
+    
+    // Validate amount conversion
+    if (amountInSubunit <= 0) {
+      return new Response(
+        JSON.stringify({
+          error: "Invalid amount: converted amount must be greater than 0",
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log("Initializing Paystack payment:", {
+      amount_main_currency: amountNumber,
+      amount_subunit: amountInSubunit,
+      currency: currency.toUpperCase(),
+      reference: reference,
+      conversion: `${amountNumber} ${currency.toUpperCase()} = ${amountInSubunit} ${currency.toUpperCase()} subunits`,
+    });
 
     // Initialize Paystack transaction
     const initResponse = await fetch(`${paystackBaseUrl}/transaction/initialize`, {
@@ -103,7 +136,7 @@ Deno.serve(async (req: Request) => {
       },
       body: JSON.stringify({
         email: customerEmail,
-        amount: amountInSubunit,
+        amount: amountInSubunit, // Paystack expects amount in subunits
         currency: currency.toUpperCase(),
         reference: reference,
         callback_url: callbackUrl || `${Deno.env.get("SITE_URL") || "https://yourdomain.com"}/payment/callback`,
@@ -137,6 +170,19 @@ Deno.serve(async (req: Request) => {
 
     const initData = await initResponse.json();
 
+    // Log Paystack's response for debugging
+    console.log("Paystack initialization response:", {
+      status: initData.status,
+      message: initData.message,
+      data: initData.data ? {
+        reference: initData.data.reference,
+        access_code: initData.data.access_code,
+        authorization_url: initData.data.authorization_url,
+        // Log amount-related fields from Paystack response if available
+        amount: initData.data.amount,
+      } : null,
+    });
+
     if (!initData.status) {
       return new Response(
         JSON.stringify({
@@ -148,6 +194,16 @@ Deno.serve(async (req: Request) => {
     }
 
     // Create payment transaction record
+    // Store amount_fiat in main currency units (e.g., 1940 KES) for consistency
+    // This will be compared with webhook amount after conversion from subunits
+    console.log("Creating payment transaction record:", {
+      amount_fiat_to_store: amountNumber,
+      amount_fiat_type: typeof amountNumber,
+      amount_sent_to_paystack_subunit: amountInSubunit,
+      currency: currency.toUpperCase(),
+      reference: reference,
+    });
+
     const { data: paymentTransaction, error: insertError } = await supabase
       .from("payment_transactions")
       .insert({
@@ -156,7 +212,7 @@ Deno.serve(async (req: Request) => {
         customer_phone: customerPhone || "",
         customer_email: customerEmail,
         customer_name: customerName,
-        amount_fiat: amount,
+        amount_fiat: amountNumber, // Store in main currency units (e.g., 1940 KES)
         fiat_currency: currency,
         paystack_reference: reference,
         paystack_access_code: initData.data.access_code,

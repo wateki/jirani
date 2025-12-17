@@ -109,12 +109,12 @@ const StoreCustomizationPanel = ({
   return (
     <Card className="h-full overflow-hidden">
       <CardHeader className="border-b bg-gradient-to-r from-blue-50 to-purple-50">
-        <CardTitle className="flex items-center gap-2">
+       {/*  <CardTitle className="flex items-center gap-2">
           <Settings className="h-5 w-5" />
           Store Customization
-        </CardTitle>
+        </CardTitle> */}
         <CardDescription>
-          Customize your store's appearance, branding, and features
+          Customize your Jirani website's appearance, branding, and features
         </CardDescription>
       </CardHeader>
 
@@ -376,24 +376,7 @@ const StoreCustomizationPanel = ({
 
                 {heroCarousel.enableCarousel && (
                   <div className="space-y-4 pl-4 border-l-2 border-blue-200">
-                    <div className="space-y-2">
-                      <Label>Auto-scroll Speed (seconds)</Label>
-                      <div className="px-3">
-                        <Slider
-                          value={[heroCarousel.autoScrollSpeed]}
-                          onValueChange={(value) => onHeroCarouselChange('autoScrollSpeed', value[0])}
-                          max={20}
-                          min={5}
-                          step={1}
-                          className="w-full"
-                        />
-                        <div className="flex justify-between text-xs text-gray-500 mt-1">
-                          <span>5s</span>
-                          <span>{heroCarousel.autoScrollSpeed}s</span>
-                          <span>20s</span>
-                        </div>
-                      </div>
-                    </div>
+                   
 
                     <div className="space-y-3">
                       <Label>Hero Slides</Label>
@@ -651,24 +634,7 @@ const StoreCustomizationPanel = ({
 
                 {campaigns.enableCampaigns && (
                   <div className="space-y-4 pl-4 border-l-2 border-green-200">
-                    <div className="space-y-2">
-                      <Label>Rotation Speed (seconds)</Label>
-                      <div className="px-3">
-                        <Slider
-                          value={[campaigns.campaignRotationSpeed]}
-                          onValueChange={(value) => onCampaignChange('campaignRotationSpeed', value[0])}
-                          max={15}
-                          min={3}
-                          step={1}
-                          className="w-full"
-                        />
-                        <div className="flex justify-between text-xs text-gray-500 mt-1">
-                          <span>3s</span>
-                          <span>{campaigns.campaignRotationSpeed}s</span>
-                          <span>15s</span>
-                        </div>
-                      </div>
-                    </div>
+                   
 
                     {/* Global Campaign Background Settings */}
                     <div className="space-y-4">

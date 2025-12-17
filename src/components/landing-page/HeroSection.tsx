@@ -97,14 +97,14 @@ export function HeroSection() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
             <Button size="lg" className="bg-primary hover:bg-primary/90 text-lg px-8 py-6 h-auto shadow-lg hover:shadow-xl transition-all duration-300" asChild>
               <Link to="/signup">
-                Start Free Trial
+                Create Store
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Link>
             </Button>
             <Button variant="outline" size="lg" className="text-lg px-8 py-6 h-auto border-primary/20 hover:bg-primary/5 bg-white/70 backdrop-blur-sm hover:backdrop-blur" asChild>
-              <a href="https://jirani-mu.vercel.app/store/juice" target="_blank" rel="noopener noreferrer">
-                View Live Demo Store
-              </a>
+              <Link to="/marketplace">
+                Explore Marketplace
+              </Link>
             </Button>
           </div>
 

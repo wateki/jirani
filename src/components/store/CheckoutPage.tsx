@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -107,14 +107,118 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
   const { toast } = useToast();
   const navigate = useNavigate();
 
+  // Initialize cart session hook for conversion tracking
+  const { markCartAsConverted } = useCartSession({
+    storeId: storeSettings?.id,
+    userId: user?.id,
+  });
+
+  // Get the base store path for navigation
+  const storePath = storeSlug ? `/store/${storeSlug}` : '';
+
+  // Handle payment success - defined before useEffect to avoid hoisting issues
+  const handlePaymentSuccess = useCallback(() => {
+    // Clear cart
+    clearCart();
+    
+    // Mark cart as converted to order
+    if (currentOrder) {
+      markCartAsConverted(currentOrder.id);
+    }
+    
+    // Set order success state
+    setOrderPlaced(true);
+    setOrderNumber(currentOrder?.order_number || '');
+    setProcessingPayment(false);
+    
+    // Show success toast
+    toast({
+      title: "Payment successful!",
+      description: `Your order #${currentOrder?.order_number} has been confirmed.`,
+      variant: "default",
+    });
+    
+    // Redirect to store after 3 seconds
+    setTimeout(() => {
+      navigate(storePath);
+    }, 3000);
+  }, [currentOrder, clearCart, markCartAsConverted, navigate, storePath, toast]);
+
   // Set up Realtime subscription for payment status updates
   useEffect(() => {
     if (!currentPaymentId) return;
 
     console.log('Setting up Realtime subscription for payment:', currentPaymentId);
+    console.log('Current user:', user?.id ? 'Authenticated' : 'Guest');
 
+    let isCleanedUp = false;
+
+    // Function to check current payment status
+    // This is called AFTER the subscription is established to catch any updates
+    // that happened between payment init and subscription setup
+    const checkCurrentStatus = async () => {
+      if (isCleanedUp) return;
+      
+      console.log('Checking current payment status after subscription established...');
+      
+      try {
+        const { data: payment, error } = await supabase
+          .from('payment_transactions')
+          .select('status, payment_metadata, paystack_metadata')
+          .eq('id', currentPaymentId)
+          .single();
+
+        if (error) {
+          console.warn('Status check failed (RLS may be blocking):', error.message);
+          return;
+        }
+
+        if (!payment) {
+          console.warn('Payment transaction not found:', currentPaymentId);
+          return;
+        }
+
+        const paymentData = payment as any;
+        console.log('Current payment status:', paymentData.status);
+
+        // Handle current status
+        if (paymentData.status === 'completed') {
+          if (!isCleanedUp) {
+            console.log('✅ Payment already completed - updating UI');
+            setPaymentStatus('success');
+            setProcessingPayment(false);
+            handlePaymentSuccess();
+            isCleanedUp = true;
+          }
+        } else if (paymentData.status === 'failed' || paymentData.status === 'cancelled') {
+          if (!isCleanedUp) {
+            console.log('❌ Payment already failed - updating UI');
+            setPaymentStatus('failed');
+            setProcessingPayment(false);
+            const errorMsg = (paymentData.payment_metadata as any)?.error_message || 
+                            (paymentData.paystack_metadata as any)?.error_message ||
+                            "Payment could not be completed.";
+            toast({
+              title: "Payment failed",
+              description: errorMsg,
+              variant: "destructive",
+            });
+            isCleanedUp = true;
+          }
+        } else {
+          console.log('Payment still in progress:', paymentData.status);
+        }
+      } catch (error) {
+        console.warn('Status check error (non-critical):', error);
+      }
+    };
+
+    // Set up Realtime subscription with enhanced logging
+    const channelName = `payment-${currentPaymentId}`;
+    console.log('Creating Realtime channel:', channelName);
+    
     const channel = supabase
-      .channel(`payment-${currentPaymentId}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -124,55 +228,85 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
           filter: `id=eq.${currentPaymentId}`,
         },
         (payload) => {
-          console.log('Payment status updated via Realtime:', payload);
+          console.log('✅✅✅ Realtime update received:', {
+            event: payload.eventType,
+            table: payload.table,
+            new: payload.new,
+            old: payload.old,
+            timestamp: new Date().toISOString()
+          });
+          
           const payment = payload.new as any;
+          
+          if (!payment) {
+            console.warn('No payment data in Realtime payload');
+            return;
+          }
+          
+          console.log('Processing payment status from Realtime:', payment.status);
           
           // Handle payment status changes
           switch (payment.status) {
             case 'completed':
-              setPaymentStatus('success');
-              setProcessingPayment(false);
-              handlePaymentSuccess();
-              // Cleanup subscription after successful payment
-              supabase.removeChannel(channel);
+              if (!isCleanedUp) {
+                console.log('✅ Payment completed via Realtime - updating UI');
+                setPaymentStatus('success');
+                setProcessingPayment(false);
+                handlePaymentSuccess();
+                isCleanedUp = true;
+              }
               break;
             case 'failed':
             case 'cancelled':
-              setPaymentStatus('failed');
-              setProcessingPayment(false);
-              const errorMsg = (payment.payment_metadata as any)?.error_message || 
-                              (payment.paystack_metadata as any)?.error_message ||
-                              "Payment could not be completed.";
-              toast({
-                title: "Payment failed",
-                description: errorMsg,
-                variant: "destructive",
-              });
-              // Cleanup subscription after failed payment
-              supabase.removeChannel(channel);
+              if (!isCleanedUp) {
+                console.log('❌ Payment failed via Realtime - updating UI');
+                setPaymentStatus('failed');
+                setProcessingPayment(false);
+                const errorMsg = (payment.payment_metadata as any)?.error_message || 
+                                (payment.paystack_metadata as any)?.error_message ||
+                                "Payment could not be completed.";
+                toast({
+                  title: "Payment failed",
+                  description: errorMsg,
+                  variant: "destructive",
+                });
+                isCleanedUp = true;
+              }
               break;
             case 'processing':
             case 'authorized':
-              // Payment is being processed, keep status as processing
+              console.log('⏳ Payment still processing:', payment.status);
               setPaymentStatus('processing');
               break;
             default:
-              // Other statuses (initialized, etc.) - keep processing
+              console.log('ℹ️ Payment status:', payment.status);
               setPaymentStatus('processing');
           }
         }
       )
-      .subscribe((status) => {
+      .subscribe((status, err) => {
+        console.log('Realtime subscription status:', status, err ? `Error: ${err}` : '');
+        
         if (status === 'SUBSCRIBED') {
-          console.log('Realtime subscription active for payment:', currentPaymentId);
+          console.log('✅ Realtime subscription active for payment:', currentPaymentId);
+          // IMPORTANT: Check current status AFTER subscription is established
+          // This catches any updates that happened before subscription was ready
+          checkCurrentStatus();
         } else if (status === 'CHANNEL_ERROR') {
-          console.error('Realtime subscription error for payment:', currentPaymentId);
+          console.error('❌ Realtime subscription error:', err);
+          // Still try to check status even if subscription fails
+          checkCurrentStatus();
+        } else if (status === 'TIMED_OUT') {
+          console.error('❌ Realtime subscription timed out');
+          checkCurrentStatus();
+        } else if (status === 'CLOSED') {
+          console.warn('⚠️ Realtime subscription closed');
         }
       });
 
     // Safety timeout: If payment doesn't complete within 10 minutes, show timeout message
     const timeoutId = setTimeout(() => {
-      if (paymentStatus === 'processing') {
+      if (paymentStatus === 'processing' && !isCleanedUp) {
         console.warn('Payment timeout - no status update received');
         toast({
           title: "Payment taking longer than expected",
@@ -185,19 +319,11 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
     // Cleanup subscription and timeout on unmount or when payment completes/fails
     return () => {
       console.log('Cleaning up Realtime subscription for payment:', currentPaymentId);
+      isCleanedUp = true;
       clearTimeout(timeoutId);
       supabase.removeChannel(channel);
     };
-  }, [currentPaymentId, paymentStatus]);
-
-  // Initialize cart session hook for conversion tracking
-  const { markCartAsConverted } = useCartSession({
-    storeId: storeSettings?.id,
-    userId: user?.id,
-  });
-
-  // Get the base store path for navigation
-  const storePath = storeSlug ? `/store/${storeSlug}` : '';
+  }, [currentPaymentId, handlePaymentSuccess, paymentStatus, toast, user]);
 
   // Initialize form with updated schema
   const form = useForm<CheckoutFormValues>({
@@ -372,17 +498,17 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
       // Create a new order
       // Build order data object, conditionally including customer_user_id to avoid schema cache issues
       const orderDataToInsert: any = {
-        store_id: storeSettings.id,
-        order_number: orderNumber,
-        customer_name: data.fullName,
-        customer_email: data.email,
-        customer_phone: data.phoneNumber,
+          store_id: storeSettings.id,
+          order_number: orderNumber,
+          customer_name: data.fullName,
+          customer_email: data.email,
+          customer_phone: data.phoneNumber,
         shipping_address: data.fulfillmentType === 'delivery' ? shippingAddress : null,
-        status: 'pending',
+          status: 'pending',
         payment_status: 'pending',
         fulfillment_type: data.fulfillmentType,
         payment_method: paymentMethod,
-        total_amount: total,
+          total_amount: total,
         user_id: storeSettings.user_id, // Store owner/merchant user ID
       };
       
@@ -442,7 +568,7 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
         }, 2000);
       } else {
         // PBD (Payment before Delivery) or PBP (Payment before Pickup) - initiate Paystack payment immediately
-        await initiatePayment(orderData, data.phoneNumber);
+      await initiatePayment(orderData, data.phoneNumber);
       }
       
     } catch (error) {
@@ -460,12 +586,29 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
 
   const initiatePayment = async (order: any, phoneNumber: string) => {
     try {
+      // Ensure amount is a number and in main currency units (KES)
+      // total is already calculated as: subtotal + shipping + tax (all in KES)
+      const paymentAmount = Number(total);
+      
+      if (isNaN(paymentAmount) || paymentAmount <= 0) {
+        throw new Error('Invalid payment amount');
+      }
+
+      console.log('Initializing Paystack payment:', {
+        amount: paymentAmount,
+        currency: 'KES',
+        orderId: order.id,
+        orderNumber: order.order_number,
+      });
+
       // Initialize Paystack payment
+      // Note: amount is sent in main currency units (e.g., 1940 KES)
+      // The edge function will convert it to subunits (1940 * 100 = 194000) for Paystack
       const paymentResponse = await supabase.functions.invoke('initialize-paystack-payment', {
         body: {
           storeId: storeSettings?.id,
           orderId: order.id,
-          amount: total,
+          amount: paymentAmount, // Main currency units (e.g., 1940 KES)
           currency: 'KES',
           customerPhone: phoneNumber,
           customerEmail: form.getValues('email'),
@@ -473,11 +616,11 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
           callbackUrl: `${window.location.origin}${storePath}/payment/callback`,
           metadata: {
             order_number: order.order_number,
-            items: cartItems.map(item => ({
-              name: item.product.name,
-              quantity: item.quantity,
-              price: item.product.price
-            }))
+          items: cartItems.map(item => ({
+            name: item.product.name,
+            quantity: item.quantity,
+            price: item.product.price
+          }))
           }
         }
       });
@@ -494,32 +637,9 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
       }
 
       // Store payment ID for status checking (triggers Realtime subscription)
+      // The Realtime subscription useEffect will check status once established
       setCurrentPaymentId(paymentData.paymentId);
       setPaymentStatus('processing');
-
-      // Check initial payment status (in case webhook already processed it)
-      const { data: initialPayment, error: initialPaymentError } = await supabase
-        .from('payment_transactions')
-        .select('status')
-        .eq('id', paymentData.paymentId)
-        .single();
-
-      if (!initialPaymentError && initialPayment) {
-        if (initialPayment.status === 'completed') {
-          setPaymentStatus('success');
-          handlePaymentSuccess();
-          return;
-        } else if (initialPayment.status === 'failed' || initialPayment.status === 'cancelled') {
-          setPaymentStatus('failed');
-          setProcessingPayment(false);
-          toast({
-            title: "Payment failed",
-            description: "Payment could not be completed.",
-            variant: "destructive",
-          });
-          return;
-        }
-      }
 
       // Open Paystack Popup
       const paystack = new PaystackPop();
@@ -536,51 +656,22 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
         },
       });
 
-      toast({
+            toast({
         title: "Payment window opened",
         description: "Please complete your payment in the popup window.",
-      });
+              });
 
-    } catch (error) {
+      } catch (error) {
       console.error('Payment initiation error:', error);
-      setPaymentStatus('failed');
+          setPaymentStatus('failed');
       setProcessingPayment(false);
-      toast({
+          toast({
         title: "Payment failed",
         description: error instanceof Error ? error.message : "Could not initiate payment. Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
-
-  const handlePaymentSuccess = () => {
-    // Clear cart
-    clearCart();
-    
-    // Mark cart as converted to order
-    if (currentOrder) {
-      markCartAsConverted(currentOrder.id);
-    }
-    
-    // Set order success state
-    setOrderPlaced(true);
-    setOrderNumber(currentOrder?.order_number || '');
-    setProcessingPayment(false);
-    
-    // Show success toast
-    toast({
-      title: "Payment successful!",
-      description: `Your order #${currentOrder?.order_number} has been confirmed.`,
-      variant: "default",
-    });
-    
-    // Redirect to store after 3 seconds
-    setTimeout(() => {
-      navigate(storePath);
-    }, 3000);
-  };
-
+            variant: "destructive",
+          });
+      }
+    };
 
 
   if (orderPlaced) {
@@ -672,10 +763,10 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
                 </div>
                 
                 {fulfillmentType === 'delivery' && (
-                  <div className="flex justify-between">
-                    <p className="text-gray-600">Shipping</p>
-                    <p>KES {shipping.toLocaleString()}</p>
-                  </div>
+                <div className="flex justify-between">
+                  <p className="text-gray-600">Shipping</p>
+                  <p>KES {shipping.toLocaleString()}</p>
+                </div>
                 )}
                 {fulfillmentType === 'pickup' && (
                   <div className="flex justify-between">
@@ -1055,78 +1146,78 @@ const CheckoutPage = ({ primaryColor, storeName, storeSettings: propStoreSetting
                   
                   {/* Location Picker Section - Only show for delivery */}
                   {form.watch('fulfillmentType') === 'delivery' && (
-                    <div className="space-y-4">
-                      <LocationPicker
-                        onLocationSelect={handleLocationSelect}
-                        currentLocation={locationData}
-                      />
-                    </div>
+                  <div className="space-y-4">
+                    <LocationPicker
+                      onLocationSelect={handleLocationSelect}
+                      currentLocation={locationData}
+                    />
+                  </div>
                   )}
                   
                   {/* Address fields - Only show for delivery */}
                   {form.watch('fulfillmentType') === 'delivery' && (
                     <>
-                      <FormField
-                        control={form.control}
-                        name="address"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Address</FormLabel>
-                            <FormControl>
-                              <Input {...field} placeholder="123 Main St" />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
+                  <FormField
+                    control={form.control}
+                    name="address"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Address</FormLabel>
+                        <FormControl>
+                          <Input {...field} placeholder="123 Main St" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                     </>
                   )}
                   
                   {/* City, State, ZipCode - Only show for delivery */}
                   {form.watch('fulfillmentType') === 'delivery' && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="city"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>City</FormLabel>
-                            <FormControl>
-                              <Input {...field} placeholder="Nairobi" />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      
-                      <FormField
-                        control={form.control}
-                        name="state"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>County</FormLabel>
-                            <FormControl>
-                              <Input {...field} placeholder="Nairobi" />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      
-                      <FormField
-                        control={form.control}
-                        name="zipCode"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Postal Code</FormLabel>
-                            <FormControl>
-                              <Input {...field} placeholder="00100" />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="city"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>City</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="Nairobi" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
+                      name="state"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>County</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="Nairobi" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
+                      name="zipCode"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Postal Code</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="00100" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
                   )}
                   
                   {/* Payment Status Indicator */}
