@@ -34,7 +34,6 @@ import {
   MessageCircle,
   ArrowDownToLine,
   ScanLine,
-  ShoppingBag,
 } from "lucide-react";
 import { OutletSelector } from "@/components/outlet-selector";
 
@@ -77,7 +76,7 @@ const DashboardContent = ({ children }: { children: React.ReactNode }) => {
               <SidebarMenuItem>
                   <SidebarMenuButton asChild tooltip="Customize Store">
                     <Link to="/dashboard/customize">
-                      <ShoppingBag className="h-4 w-4" />
+                      <Settings className="h-4 w-4" />
                       <span>My Website</span>
                     </Link>
                   </SidebarMenuButton>

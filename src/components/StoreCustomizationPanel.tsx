@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -104,23 +104,7 @@ const StoreCustomizationPanel = ({
   isPublishing = false,
   isSaving = false,
 }: StoreCustomizationPanelProps) => {
-  // Initialize activeTab from localStorage or default to "branding"
-  const [activeTab, setActiveTab] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const savedTab = localStorage.getItem('store_customization_active_tab');
-      if (savedTab && ['branding', 'colors', 'hero', 'campaigns'].includes(savedTab)) {
-        return savedTab;
-      }
-    }
-    return "branding";
-  });
-
-  // Save activeTab to localStorage whenever it changes
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('store_customization_active_tab', activeTab);
-    }
-  }, [activeTab]);
+  const [activeTab, setActiveTab] = useState("branding");
 
   return (
     <Card className="h-full overflow-hidden">
